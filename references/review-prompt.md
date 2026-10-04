@@ -16,6 +16,14 @@ standard this change is held to:
 
 {{CI}}
 
+## Earlier rounds on this PR
+
+{{HISTORY}}
+
+Check first whether each earlier blocker/high/medium is really fixed. Keep the
+severity an issue had in an earlier round unless the new code changes the risk:
+re-grading a `low` as `medium` restarts the fix loop for nothing.
+
 ## Review, in this priority order
 
 1. **Security**: authentication and authorization, row-level security and

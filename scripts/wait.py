@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import pr_context  # noqa: E402
 
 INTERVAL_S = 60
+NO_CI_GRACE_S = 150  # a fresh push has no checks for a minute or two
 
 
 def checks(repo, pr):
@@ -31,12 +32,16 @@ def head(repo, pr):
     return v["headRefOid"], v["state"]
 
 
-def wait(mode, repo, pr, since=None, timeout_s=3600, interval_s=INTERVAL_S, sleep=time.sleep):
-    deadline = time.monotonic() + timeout_s
+def wait(mode, repo, pr, since=None, timeout_s=3600, interval_s=INTERVAL_S, sleep=time.sleep,
+         grace_s=NO_CI_GRACE_S, clock=time.monotonic):
+    start = clock()
+    deadline = start + timeout_s
     while True:
         if mode == "ci":
             state = pr_context.ci_state(checks(repo, pr))
-            if state != "pending":
+            if state == "none" and clock() - start < grace_s:
+                pass  # checks may not be registered yet
+            elif state != "pending":
                 return {"ci": state}
         else:
             sha, pr_state = head(repo, pr)
@@ -44,7 +49,7 @@ def wait(mode, repo, pr, since=None, timeout_s=3600, interval_s=INTERVAL_S, slee
                 return {"state": pr_state, "sha": sha}
             if sha != since:
                 return {"sha": sha}
-        if time.monotonic() >= deadline:
+        if clock() >= deadline:
             return None
         sleep(interval_s)
 

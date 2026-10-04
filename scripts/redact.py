@@ -24,7 +24,7 @@ NAMED = re.compile(
     r"""(?ix)
     ( ["']?[A-Z0-9_.-]*(?:password|passwd|secret|token|api[_-]?key|apikey|service[_-]?role[_-]?key|private[_-]?key|access[_-]?key)[A-Z0-9_.-]*["']?
       \s*[:=]\s*["']? )
-    ( [^\s"',]{4,} )
+    ( (?![\d.]+\b)[^\s"',]{4,} )   # pure numbers (token counts, ports) are not secrets
     """)
 
 

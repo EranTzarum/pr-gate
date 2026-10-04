@@ -23,6 +23,22 @@ class WaitTest(unittest.TestCase):
         self.feed([json.dumps([{"bucket": "pending"}]), "garbage", json.dumps([{"bucket": "fail"}])])
         self.assertEqual(wait.wait("ci", "o/r", 1, sleep=lambda s: None), {"ci": "fail"})
 
+    def test_none_waits_out_grace(self):
+        now = [0]
+        self.feed(["[]", "[]", json.dumps([{"bucket": "pass"}])])
+        def sleep(s):
+            now[0] += s
+        res = wait.wait("ci", "o/r", 1, sleep=sleep, interval_s=60, grace_s=150, clock=lambda: now[0])
+        self.assertEqual(res, {"ci": "pass"})
+
+    def test_none_after_grace(self):
+        now = [0]
+        pr_context.run = lambda args, cwd=None, check=True: "[]"
+        def sleep(s):
+            now[0] += s
+        res = wait.wait("ci", "o/r", 1, sleep=sleep, interval_s=60, grace_s=150, clock=lambda: now[0])
+        self.assertEqual((res, now[0]), ({"ci": "none"}, 180))
+
     def test_push_returns_new_sha(self):
         self.feed([json.dumps({"headRefOid": "a", "state": "OPEN"}),
                    json.dumps({"headRefOid": "b", "state": "OPEN"})])

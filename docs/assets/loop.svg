@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="300" viewBox="0 0 980 300" role="img" aria-label="pr-gate loop: CI, review, fix request to the owner up to 3 rounds, then a report and your merge reply">
+  <style>
+    .box{fill:#ffffff;stroke:#052E16;stroke-width:2}
+    .hot{fill:#DCFCE7;stroke:#16A34A;stroke-width:2.5}
+    .t{font:600 17px system-ui,-apple-system,Segoe UI,sans-serif;fill:#052E16}
+    .s{font:14px system-ui,-apple-system,Segoe UI,sans-serif;fill:#3f5a48}
+    .a{stroke:#052E16;stroke-width:2.2;fill:none;marker-end:url(#h)}
+    .g{stroke:#16A34A;stroke-width:2.2;fill:none;marker-end:url(#hg)}
+  </style>
+  <defs>
+    <marker id="h" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#052E16"/></marker>
+    <marker id="hg" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#16A34A"/></marker>
+  </defs>
+  <rect x="0" y="0" width="980" height="300" rx="18" fill="#F7FDF9"/>
+  <rect class="box" x="30" y="60" width="160" height="80" rx="12"/>
+  <text class="t" x="110" y="95" text-anchor="middle">New PR or push</text>
+  <text class="s" x="110" y="118" text-anchor="middle">any repo you name</text>
+  <rect class="box" x="240" y="60" width="160" height="80" rx="12"/>
+  <text class="t" x="320" y="95" text-anchor="middle">1. Wait for CI</text>
+  <text class="s" x="320" y="118" text-anchor="middle">failing logs, redacted</text>
+  <rect class="box" x="450" y="60" width="180" height="80" rx="12"/>
+  <text class="t" x="540" y="95" text-anchor="middle">2. Fresh review</text>
+  <text class="s" x="540" y="118" text-anchor="middle">codex · claude · cursor</text>
+  <rect class="hot" x="690" y="60" width="260" height="80" rx="12"/>
+  <text class="t" x="820" y="95" text-anchor="middle">3. Green: you reply “merge”</text>
+  <text class="s" x="820" y="118" text-anchor="middle">plain report + what merging triggers</text>
+  <rect class="box" x="360" y="200" width="300" height="70" rx="12"/>
+  <text class="t" x="510" y="230" text-anchor="middle">Fix request to the owner session</text>
+  <text class="s" x="510" y="252" text-anchor="middle">file:line · scenario · fix · max 3 rounds</text>
+  <path class="a" d="M190 100 H234"/>
+  <path class="a" d="M400 100 H444"/>
+  <path class="g" d="M630 100 H684"/>
+  <path class="a" d="M560 140 V194"/>
+  <path class="a" d="M360 235 H300 V146"/>
+  <text class="s" x="572" y="172">CI red or medium+</text>
+  <text class="s" x="250" y="228" text-anchor="middle">new push</text>
+</svg>

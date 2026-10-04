@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="pr-gate logo">
+  <rect x="2" y="2" width="124" height="124" rx="32" fill="#DCFCE7"/>
+  <!-- merge arrow: two branches joining into one, heading right -->
+  <path d="M22 96 C44 96 50 80 66 80 L98 80" fill="none" stroke="#052E16" stroke-width="7" stroke-linecap="round"/>
+  <path d="M22 64 C44 64 50 80 66 80" fill="none" stroke="#052E16" stroke-width="7" stroke-linecap="round"/>
+  <polygon points="96,70 110,80 96,90" fill="#052E16"/>
+  <!-- gate post and striped arm across the path -->
+  <rect x="30" y="30" width="10" height="26" rx="3" fill="#052E16"/>
+  <rect x="36" y="34" width="66" height="10" rx="5" fill="#052E16"/>
+  <rect x="50" y="34" width="10" height="10" fill="#DCFCE7"/>
+  <rect x="72" y="34" width="10" height="10" fill="#DCFCE7"/>
+  <!-- the green light: approved -->
+  <circle cx="35" cy="24" r="9" fill="#16A34A"/>
+  <path d="M30.5 24 l3 3 l6 -6" fill="none" stroke="#DCFCE7" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

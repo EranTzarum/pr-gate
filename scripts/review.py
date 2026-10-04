@@ -8,7 +8,9 @@ Prints the findings.py result JSON: {summary, kept, dropped, verdict, round, act
 """
 import argparse
 import json
+import os
 import shutil
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -20,7 +22,7 @@ from redact import redact  # noqa: E402
 
 PROMPT = HERE.parent / "references" / "review-prompt.md"
 DIFF_MAX_CHARS = 80000
-TIMEOUT_S = 1800
+TIMEOUT_S = 900  # a healthy review takes 1-3 min; 15 min means the engine is stuck
 CLAUDE_BUDGET_USD = "5"
 ENGINES = ("codex", "claude", "cursor", "subagent")
 
@@ -37,8 +39,14 @@ def build_prompt(ctx):
     ci = {"pass": "CI passed.", "pending": "CI still running; judge the code only.",
           "none": "This repo has no CI on this PR. Look harder at what tests would have caught.",
           "fail": "CI FAILED. Failing job logs (tail, redacted):\n```\n" + ctx["failed_logs"] + "\n```"}[ctx["ci"]]
+    earlier = [r for r in findings.load(ctx["repo"], ctx["pr"])["rounds"] if r["sha"] != ctx["head_sha"]]
+    history = "\n".join(
+        f"- round {n} @ {r['sha'][:8]}: " + ("; ".join(
+            f"[{i['severity']}] {i['file']}:{i['line']} {i['title']}" for i in r.get("findings", [])) or "no findings")
+        for n, r in enumerate(earlier, 1)) or "- none (first round)"
     text = PROMPT.read_text(encoding="utf-8")
-    for k, v in (("{{PR_HEADER}}", header), ("{{DOCS}}", docs), ("{{CI}}", ci), ("{{DIFF}}", "```diff\n" + diff + "\n```")):
+    for k, v in (("{{PR_HEADER}}", header), ("{{DOCS}}", docs), ("{{CI}}", ci), ("{{HISTORY}}", history),
+                 ("{{DIFF}}", "```diff\n" + diff + "\n```")):
         text = text.replace(k, v)
     return text
 
@@ -64,13 +72,30 @@ def engine_argv(engine, checkout, model=None):
     return argv
 
 
-def run_engine(engine, ctx, prompt, out, model=None):
-    p = subprocess.run(engine_argv(engine, ctx["checkout"], model), input=prompt, cwd=ctx["checkout"],
-                       capture_output=True, text=True, encoding="utf-8", errors="replace",
-                       timeout=TIMEOUT_S)
-    out.write_text(redact(p.stdout), encoding="utf-8")
-    if p.returncode != 0 and not p.stdout.strip():
-        raise RuntimeError(f"{engine} exited {p.returncode}: {redact(p.stderr.strip())[-600:]}")
+def kill_tree(p):
+    """Kill the engine and its children. Killing only `cmd` leaves node/agent
+    children holding the stdout pipe, and communicate() then never returns."""
+    if sys.platform.startswith("win"):
+        subprocess.run(["taskkill", "/PID", str(p.pid), "/T", "/F"], capture_output=True)
+    else:
+        os.killpg(p.pid, signal.SIGKILL)
+
+
+def run_engine(engine, ctx, prompt, out, model=None, timeout_s=None):
+    timeout_s = timeout_s or TIMEOUT_S
+    p = subprocess.Popen(engine_argv(engine, ctx["checkout"], model), cwd=ctx["checkout"],
+                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                         text=True, encoding="utf-8", errors="replace",
+                         start_new_session=not sys.platform.startswith("win"))
+    try:
+        stdout, stderr = p.communicate(input=prompt, timeout=timeout_s)
+    except subprocess.TimeoutExpired:
+        kill_tree(p)
+        p.communicate(timeout=30)
+        raise RuntimeError(f"{engine} gave no answer in {timeout_s // 60} min; killed. Try another engine.")
+    out.write_text(redact(stdout), encoding="utf-8")
+    if p.returncode != 0 and not stdout.strip():
+        raise RuntimeError(f"{engine} exited {p.returncode}: {redact(stderr.strip())[-600:]}")
 
 
 def main(argv=None):

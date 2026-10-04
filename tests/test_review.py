@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -29,9 +30,14 @@ def make_ctx(d, ci="fail"):
 class PromptTest(unittest.TestCase):
     def test_all_placeholders_filled(self):
         with tempfile.TemporaryDirectory() as d:
-            _, ctx = make_ctx(d)
-            text = review.build_prompt(ctx)
+            os.environ["PR_GATE_HOME"] = d
+            try:
+                _, ctx = make_ctx(d)
+                text = review.build_prompt(ctx)
+            finally:
+                del os.environ["PR_GATE_HOME"]
         self.assertNotIn("{{", text)
+        self.assertIn("none (first round)", text)
         for s in ("Add export", "- CLAUDE.md", "CI FAILED", "TypeError at export.ts:2", "+const x = 1"):
             self.assertIn(s, text)
 
@@ -50,6 +56,25 @@ class ArgvTest(unittest.TestCase):
                              & set(argv))
 
 
+class TimeoutTest(unittest.TestCase):
+    def test_hung_engine_with_child_is_killed(self):
+        """Parent spawns a child that holds stdout open; the tree must die on timeout."""
+        child = "import subprocess,sys,time; subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)']); time.sleep(60)"
+        orig = review.engine_argv
+        review.engine_argv = lambda engine, checkout, model=None: [sys.executable, "-c", child]
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                _, ctx = make_ctx(d)
+                start = time.monotonic()
+                with self.assertRaises(RuntimeError) as cm:
+                    review.run_engine("cursor", ctx, "x", Path(d) / "o.out", timeout_s=2)
+                elapsed = time.monotonic() - start
+        finally:
+            review.engine_argv = orig
+        self.assertIn("killed", str(cm.exception))
+        self.assertLess(elapsed, 20)
+
+
 class RawGateTest(unittest.TestCase):
     def test_raw_output_is_gated(self):
         with tempfile.TemporaryDirectory() as d:
@@ -66,6 +91,13 @@ class RawGateTest(unittest.TestCase):
                     rc = review.main([str(ctx_file), "--raw", str(raw)])
             finally:
                 del os.environ["PR_GATE_HOME"]
+            os.environ["PR_GATE_HOME"] = d
+            try:
+                ctx2 = dict(json.loads(ctx_file.read_text()), head_sha="newsha")
+                prompt = review.build_prompt(ctx2)
+            finally:
+                del os.environ["PR_GATE_HOME"]
+        self.assertIn("round 1 @ abcdef12: [medium] src/export.ts:2 t", prompt)
         out = json.loads(buf.getvalue())
         self.assertEqual(rc, 0)
         self.assertEqual((out["verdict"], out["action"], out["round"]), ("fix", "send-fix", 1))

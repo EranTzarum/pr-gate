@@ -76,8 +76,10 @@ a file, then `review.py <context_file> --raw <that file>`.
 
 The result JSON: `summary`, `kept` (verified findings, worst first), `dropped`
 (with a reason: not at a real line, no scenario, duplicate…), `verdict`,
-`round`, `action`. Exit 2/3 = no usable reviewer output: report, offer another
-engine; it does not count as a round only if nothing was recorded.
+`round`, `action`. Exit 2/3 = no usable reviewer output (bad JSON, error, or no answer in 15 min,
+after which the engine's process tree is killed): report it and offer another
+engine. Nothing is recorded, so it does not use up a round. `cursor` is unverified (see
+`docs/evals.md`); prefer codex or claude until a one-line `agent -p` answers.
 
 Spot-check: open the top blocker/high finding's `file:line` in the checkout
 yourself. If it is plainly wrong, move it to dropped and say so.
@@ -113,9 +115,10 @@ Report the merge commit and what it triggered.
 
 1. **Marker** in the PR body: `<!-- pr-gate:session=<id> host=claude-desktop -->`
    → `ccd_session_mgmt` `send_message` (or `SendMessage` to `local_<id>`).
-2. **No marker** → `list_sessions` and match a session whose branch equals the
-   PR head branch (or whose title/PR matches). Exactly one match → send to it.
-   Zero or several → don't guess.
+2. **No marker** → `list_sessions` (non-archived) and match a session whose
+   `prNumber` equals the PR number **and** whose `cwd` is a checkout of the
+   PR's repo (`git -C <cwd> remote get-url origin`). Exactly one match → send
+   to it. Zero or several → don't guess.
 3. **Fallback** → post the fix request as a PR comment
    (`gh pr comment <N> -R <repo> --body-file <file>`) and tell the user which
    session should pick it up.

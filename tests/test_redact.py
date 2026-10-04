@@ -37,6 +37,10 @@ class RedactTest(unittest.TestCase):
         block = "-----BEGIN RSA PRIVATE KEY-----\nMIIEow\n-----END RSA PRIVATE KEY-----"
         self.assertMasked("x\n" + block + "\ny", "MIIEow")
 
+    def test_numeric_counts_untouched(self):
+        text = '"input_tokens":20614,"output_tokens":671'
+        self.assertEqual(redact(text), text)
+
     def test_plain_text_untouched(self):
         text = "FAIL tests/test_auth.py::test_login - AssertionError: 401 != 200"
         self.assertEqual(redact(text), text)

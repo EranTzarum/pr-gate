@@ -133,10 +133,11 @@ def load(repo, pr):
     return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {"repo": repo, "pr": int(pr), "rounds": []}
 
 
-def record(repo, pr, sha, ci, verdict, counts):
+def record(repo, pr, sha, ci, verdict, counts, kept=()):
     """One round per head SHA: re-checking the same SHA replaces its round."""
     st = load(repo, pr)
-    entry = {"sha": sha, "ci": ci, "verdict": verdict, "counts": counts}
+    entry = {"sha": sha, "ci": ci, "verdict": verdict, "counts": counts,
+             "findings": [{k: i.get(k) for k in ("severity", "file", "line", "title")} for i in kept]}
     if st["rounds"] and st["rounds"][-1]["sha"] == sha:
         st["rounds"][-1] = entry
     else:
@@ -179,7 +180,7 @@ def main(argv=None):
     kept, dropped = verify(out.get("findings", []), a.root)
     verdict = gate(a.ci, kept)
     counts = {s: sum(1 for k in kept if k["severity"] == s) for s in SEVERITIES}
-    st = record(a.repo, a.pr, a.sha, a.ci, verdict, counts)
+    st = record(a.repo, a.pr, a.sha, a.ci, verdict, counts, kept)
     print(json.dumps({"summary": out.get("summary", ""), "kept": kept, "dropped": dropped,
                       "verdict": verdict, "round": len(st["rounds"]),
                       "action": next_action(st)}, indent=2))
