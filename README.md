@@ -146,7 +146,7 @@ The launcher also works on its own, from any terminal:
 
 ```bash
 echo "Summarise src/ in 5 bullets" | py -3 "$HOME/.claude/skills/pr-gate/scripts/lean_run.py" codex --model gpt-6-luna --effort low --cwd .
-py -3 "$HOME/.claude/skills/pr-gate/scripts/lean_run.py" claude --model sonnet --mcp supabase-brofix --cwd . < prompt.txt
+cat prompt.txt | py -3 "$HOME/.claude/skills/pr-gate/scripts/lean_run.py" claude --model sonnet --mcp supabase-brofix --cwd .
 ```
 
 ---
