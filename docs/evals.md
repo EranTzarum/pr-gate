@@ -47,3 +47,33 @@ No owner marker and no app session on the PR, so each fix request went out as a 
 - `ask-merge` and the merge step. They are covered by unit tests only. The first real PR will exercise them.
 - App `send_message` delivery (no session owned this PR).
 - The `subagent` engine.
+
+## Live run 2: 2026-10-04, lean launcher and mid-tier models
+
+**Why:** A Cursor investigation showed that every headless launch loads the full profile:
+- plugins, plugin hooks (security-guidance exits 127 on Windows after 22–27 s) and MCP servers, about 1 minute before the model is asked;
+- defaults to the strongest model (Grok 4.7 High; about 13k input tokens for "reply ok").
+
+Codex and Claude had the same problem. `scripts/lean_run.py` now runs every reviewer with an explicit model and nothing global unless it is granted for that run.
+
+**One-line prompt ("Reply with exactly: ok"):**
+
+| Engine | Full profile | Lean |
+|---|---|---|
+| codex `gpt-6.1-sol` low | timeout (>180 s) | 20 s (`CODEX_HOME` with the login only, plus `--ignore-user-config`) |
+| claude `sonnet` | 23 s | 6.7 s (`--setting-sources project,local --disable-slash-commands --strict-mcp-config`) |
+| claude `--bare` | | not logged in, so not used |
+| cursor `composer-2.5` | pipes: timeout (>240 s); files: 91 s | empty-HOME sandbox: timeout (>150 s), even though `agent status` says logged in |
+
+So cursor runs on the real profile for now, with file I/O and an explicit model. This is tracked in workflowai-factory#9.
+
+**Same review as live run 1, round 3** (head `a3a058f9`):
+
+| Engine | Before | Lean, mid tier | Kept findings |
+|---|---|---|---|
+| codex | 2m15s (default model) | **43 s** (`gpt-6.1-sol` low) | none |
+| claude | 35 s | **20 s** (`sonnet`) | low: MAX_ITEMS (kept at low, as in round 2) |
+
+**Trade-off:**
+- At low effort, codex no longer flagged "negative price via apply_discount", which the stronger run graded medium.
+- The mid tier is the default. For auth, migrations or payments PRs, run `--effort medium` or a stronger `--model`.

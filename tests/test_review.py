@@ -42,37 +42,39 @@ class PromptTest(unittest.TestCase):
             self.assertIn(s, text)
 
 
-class ArgvTest(unittest.TestCase):
-    def test_engines_are_read_only(self):
-        codex = review.engine_argv("codex", "C:/co")
-        self.assertIn("read-only", codex)
-        claude = review.engine_argv("claude", "C:/co")
-        self.assertEqual(claude[claude.index("--permission-mode") + 1], "plan")
-        self.assertIn("--max-budget-usd", claude)
-        cursor = review.engine_argv("cursor", "C:/co")
-        self.assertEqual(cursor[cursor.index("--mode") + 1], "ask")
-        for argv in (codex, claude, cursor):
-            self.assertFalse({"--force", "--yolo", "acceptEdits", "--dangerously-bypass-approvals-and-sandbox"}
-                             & set(argv))
+class EngineDefaultsTest(unittest.TestCase):
+    def test_defaults_are_explicit_mid_tier(self):
+        seen = {}
 
+        def fake_run(engine, model, prompt, cwd, effort=None, timeout_s=None):
+            seen[engine] = (model, effort)
+            return 0, "{}"
 
-class TimeoutTest(unittest.TestCase):
-    def test_hung_engine_with_child_is_killed(self):
-        """Parent spawns a child that holds stdout open; the tree must die on timeout."""
-        child = "import subprocess,sys,time; subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)']); time.sleep(60)"
-        orig = review.engine_argv
-        review.engine_argv = lambda engine, checkout, model=None: [sys.executable, "-c", child]
+        orig = review.lean_run.run
+        review.lean_run.run = fake_run
         try:
             with tempfile.TemporaryDirectory() as d:
                 _, ctx = make_ctx(d)
-                start = time.monotonic()
-                with self.assertRaises(RuntimeError) as cm:
-                    review.run_engine("cursor", ctx, "x", Path(d) / "o.out", timeout_s=2)
-                elapsed = time.monotonic() - start
+                for engine in ("codex", "claude", "cursor"):
+                    review.run_engine(engine, ctx, "p", Path(d) / f"{engine}.out")
+                review.run_engine("codex", ctx, "p", Path(d) / "x.out", model="gpt-6-luna", effort="medium")
         finally:
-            review.engine_argv = orig
+            review.lean_run.run = orig
+        self.assertEqual(seen["claude"], ("sonnet", None))
+        self.assertEqual(seen["cursor"], ("composer-2.5", None))
+        self.assertEqual(seen["codex"], ("gpt-6-luna", "medium"))  # override wins
+
+    def test_timeout_is_reported(self):
+        orig = review.lean_run.run
+        review.lean_run.run = lambda *a, **k: (3, "")
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                _, ctx = make_ctx(d)
+                with self.assertRaises(RuntimeError) as cm:
+                    review.run_engine("cursor", ctx, "p", Path(d) / "o.out")
+        finally:
+            review.lean_run.run = orig
         self.assertIn("killed", str(cm.exception))
-        self.assertLess(elapsed, 20)
 
 
 class RawGateTest(unittest.TestCase):

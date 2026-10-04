@@ -9,7 +9,7 @@ A skill that reviews each pull request, sends the fixes back to the session that
 
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-skill-16A34A)](#quick-start)
 [![Reviewers](https://img.shields.io/badge/reviewers-codex%20%C2%B7%20claude%20%C2%B7%20cursor-052E16)](#pick-a-reviewer)
-[![Tests](https://img.shields.io/badge/tests-40%20passing-16A34A)](#verify)
+[![Tests](https://img.shields.io/badge/tests-52%20passing-16A34A)](#verify)
 [![License: MIT](https://img.shields.io/badge/license-MIT-052E16)](LICENSE)
 
 </div>
@@ -66,7 +66,7 @@ Needs `gh` (logged in) and Python 3. Each reviewer needs its own CLI: `codex`, `
 py -3 -m unittest discover tests
 ```
 
-Expected: `Ran 40 tests ... OK`. No network calls; `gh` is mocked.
+Expected: `Ran 52 tests ... OK`. No network calls; `gh` is mocked.
 
 ---
 
@@ -123,14 +123,31 @@ Each round, the reviewer sees the earlier rounds' findings and keeps each one's 
 
 ### Pick a reviewer
 
-| `--reviewer` | Runs as | Note |
+| `--reviewer` | Default model | Note |
 |---|---|---|
-| `codex` | `codex exec --sandbox read-only` | Default when the host is Claude |
-| `claude` | `claude -p --permission-mode plan`, budget-capped | Default when the host is Codex or Cursor |
-| `cursor` | `agent -p --mode ask` | Unverified: Cursor's CLI hung in the first test ([evals](docs/evals.md)) |
+| `codex` | `gpt-6.1-sol`, low effort | Default when the host is Claude |
+| `claude` | `sonnet` | Default when the host is Codex or Cursor |
+| `cursor` | `composer-2.5` | Slow: about 90 s before it answers anything ([evals](docs/evals.md)) |
 | `subagent` | An Agent-tool subagent in the same session | Fresh context, same model family |
 
-You pick per run. If the engine fails, pr-gate tells you and offers the next one. It never switches engines silently.
+You pick the engine per run, and you can override the model with `--model` and `--effort`. If the engine fails, pr-gate tells you and offers the next one. It never switches engines silently.
+
+### Lean runs
+
+Every reviewer runs through `scripts/lean_run.py`. It's read-only, takes an explicit model, and loads none of your global MCP servers, skills, plugins or hooks, unless you grant one for that run. Same idea as the factory's worker sandboxes:
+
+| Engine | What's left out | One-line prompt, before → after |
+|---|---|---|
+| codex | Everything in `~/.codex` except the login | timeout (>180 s) → 20 s |
+| claude | User settings, hooks, plugins, skills, MCPs (the repo's own rules still apply) | 23 s → 7 s |
+| cursor | Nothing yet: its sandbox hangs on the current CLI; uses file I/O instead of pipes | hang → 91 s |
+
+The launcher also works on its own, from any terminal:
+
+```bash
+echo "Summarise src/ in 5 bullets" | py -3 ~/.claude/skills/pr-gate/scripts/lean_run.py codex --model gpt-6-luna --effort low --cwd .
+py -3 ~/.claude/skills/pr-gate/scripts/lean_run.py claude --model sonnet --mcp supabase-brofix --cwd . < prompt.txt
+```
 
 ---
 
@@ -158,6 +175,7 @@ Not enabled. [docs/automation.md](docs/automation.md) compares a scheduled local
 | `references/review-prompt.md` | The reviewer's instructions and JSON output format |
 | `scripts/pr_context.py` | PR, diff, CI, logs, docs, merge triggers → one JSON file |
 | `scripts/review.py` | Runs a read-only engine and gates its output |
+| `scripts/lean_run.py` | Lean headless launcher for codex, claude and cursor (also usable on its own) |
 | `scripts/findings.py` | Verifies findings, decides the verdict, keeps round state |
 | `scripts/wait.py` | Waits for CI or a new push, as a process rather than a polling model |
 | `scripts/redact.py` | Secret masking |

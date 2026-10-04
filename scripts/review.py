@@ -1,6 +1,6 @@
 """Run one read-only review round and gate it.
 
-  py -3 review.py <context.json> --engine codex|claude|cursor [--model M]
+  py -3 review.py <context.json> --engine codex|claude|cursor [--model M] [--effort E]
   py -3 review.py <context.json> --engine subagent --prompt-only   # writes the prompt, prints its path
   py -3 review.py <context.json> --raw <reviewer-output-file>      # gate an existing output
 
@@ -8,9 +8,6 @@ Prints the findings.py result JSON: {summary, kept, dropped, verdict, round, act
 """
 import argparse
 import json
-import os
-import shutil
-import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -18,12 +15,15 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import findings  # noqa: E402
+import lean_run  # noqa: E402
 from redact import redact  # noqa: E402
 
 PROMPT = HERE.parent / "references" / "review-prompt.md"
 DIFF_MAX_CHARS = 80000
 TIMEOUT_S = 900  # a healthy review takes 1-3 min; 15 min means the engine is stuck
-CLAUDE_BUDGET_USD = "5"
+# Mid tier: enough to read a diff and confirm a file:line. Override with --model/--effort.
+DEFAULT_MODELS = {"codex": ("gpt-6.1-sol", "low"), "claude": ("sonnet", None),
+                  "cursor": ("composer-2.5", None)}
 ENGINES = ("codex", "claude", "cursor", "subagent")
 
 
@@ -51,51 +51,18 @@ def build_prompt(ctx):
     return text
 
 
-def engine_argv(engine, checkout, model=None):
-    """Read-only headless invocation per engine (flags as crew uses them)."""
-    if engine == "codex":
-        argv = ["cmd", "/c", shutil.which("codex") or "codex", "exec", "--sandbox", "read-only",
-                "-C", checkout, "--json", "--skip-git-repo-check"]
-    elif engine == "claude":
-        argv = ["cmd", "/c", shutil.which("claude") or "claude", "-p", "--strict-mcp-config",
-                "--permission-mode", "plan", "--output-format", "json",
-                "--max-budget-usd", CLAUDE_BUDGET_USD]
-    elif engine == "cursor":
-        argv = ["cmd", "/c", shutil.which("agent") or "agent", "-p", "--mode", "ask", "--trust",
-                "--output-format", "json", "--workspace", checkout]
-    else:
-        raise ValueError(engine)
-    if model:
-        argv += ["--model", model] if engine != "codex" else ["-m", model]
-    if not sys.platform.startswith("win"):
-        argv = argv[2:]
-    return argv
-
-
-def kill_tree(p):
-    """Kill the engine and its children. Killing only `cmd` leaves node/agent
-    children holding the stdout pipe, and communicate() then never returns."""
-    if sys.platform.startswith("win"):
-        subprocess.run(["taskkill", "/PID", str(p.pid), "/T", "/F"], capture_output=True)
-    else:
-        os.killpg(p.pid, signal.SIGKILL)
-
-
-def run_engine(engine, ctx, prompt, out, model=None, timeout_s=None):
-    timeout_s = timeout_s or TIMEOUT_S
-    p = subprocess.Popen(engine_argv(engine, ctx["checkout"], model), cwd=ctx["checkout"],
-                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                         text=True, encoding="utf-8", errors="replace",
-                         start_new_session=not sys.platform.startswith("win"))
-    try:
-        stdout, stderr = p.communicate(input=prompt, timeout=timeout_s)
-    except subprocess.TimeoutExpired:
-        kill_tree(p)
-        p.communicate(timeout=30)
-        raise RuntimeError(f"{engine} gave no answer in {timeout_s // 60} min; killed. Try another engine.")
+def run_engine(engine, ctx, prompt, out, model=None, effort=None, timeout_s=None):
+    """Read-only lean run (scripts/lean_run.py): explicit model, no global MCPs,
+    skills or hooks."""
+    model = model or DEFAULT_MODELS[engine][0]
+    effort = effort or DEFAULT_MODELS[engine][1]
+    code, stdout = lean_run.run(engine, model, prompt, Path(ctx["checkout"]), effort=effort,
+                                timeout_s=timeout_s or TIMEOUT_S)
     out.write_text(redact(stdout), encoding="utf-8")
-    if p.returncode != 0 and not stdout.strip():
-        raise RuntimeError(f"{engine} exited {p.returncode}: {redact(stderr.strip())[-600:]}")
+    if code == 3:
+        raise RuntimeError(f"{engine} gave no answer in {(timeout_s or TIMEOUT_S) // 60} min; killed. Try another engine.")
+    if code != 0 and not stdout.strip():
+        raise RuntimeError(f"{engine} ({model}) exited {code} with no output")
 
 
 def main(argv=None):
@@ -103,6 +70,7 @@ def main(argv=None):
     ap.add_argument("context")
     ap.add_argument("--engine", choices=ENGINES)
     ap.add_argument("--model")
+    ap.add_argument("--effort")
     ap.add_argument("--raw", help="gate an existing reviewer output instead of running an engine")
     ap.add_argument("--prompt-only", action="store_true")
     a = ap.parse_args(argv)
@@ -121,7 +89,7 @@ def main(argv=None):
             ap.error("--engine or --raw required")
         raw = stem.parent / f"{stem.name}.{ctx['head_sha'][:8]}.{a.engine}.out"
         try:
-            run_engine(a.engine, ctx, prompt, raw, a.model)
+            run_engine(a.engine, ctx, prompt, raw, a.model, a.effort)
         except (RuntimeError, subprocess.TimeoutExpired, FileNotFoundError) as e:
             print(json.dumps({"error": str(e)[:800], "engine": a.engine}))
             return 3

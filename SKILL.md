@@ -27,7 +27,11 @@ run with `py -3` on Windows (`python3` elsewhere). State lives in
 
 ## Inputs
 
-`/pr-gate <owner/repo> <PR#> [--reviewer codex|claude|cursor|subagent] [--model M]`
+`/pr-gate <owner/repo> <PR#> [--reviewer codex|claude|cursor|subagent] [--model M] [--effort E]`
+
+Default models are mid tier (codex `gpt-6.1-sol` at low effort, claude `sonnet`,
+cursor `composer-2.5`). Use a stronger `--model` only when asked, or for a
+high-risk PR (auth, migrations, payments), and say so in the report.
 `/pr-gate <owner/repo> --all-open` → `gh pr list -R <repo> --state open --json number,title,isDraft`,
 skip drafts, run the loop for each PR **one after another**.
 
@@ -66,7 +70,7 @@ merge-triggered workflows and the owner marker. Prints a summary with
 ### 3. Review
 
 ```bash
-py -3 <skill>/scripts/review.py <context_file> --engine codex|claude|cursor [--model M]
+py -3 <skill>/scripts/review.py <context_file> --engine codex|claude|cursor [--model M] [--effort E]
 ```
 
 Long-running: run it in the background. For `subagent`: run with
@@ -78,8 +82,8 @@ The result JSON: `summary`, `kept` (verified findings, worst first), `dropped`
 (with a reason: not at a real line, no scenario, duplicate…), `verdict`,
 `round`, `action`. Exit 2/3 = no usable reviewer output (bad JSON, error, or no answer in 15 min,
 after which the engine's process tree is killed): report it and offer another
-engine. Nothing is recorded, so it does not use up a round. `cursor` is unverified (see
-`docs/evals.md`); prefer codex or claude until a one-line `agent -p` answers.
+engine. Nothing is recorded, so it does not use up a round. `cursor` is slow (about
+90 s before it answers anything, see `docs/evals.md`); prefer codex or claude.
 
 Spot-check: open the top blocker/high finding's `file:line` in the checkout
 yourself. If it is plainly wrong, move it to dropped and say so.
