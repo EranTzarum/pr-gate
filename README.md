@@ -145,8 +145,8 @@ Every reviewer runs through `scripts/lean_run.py`. It's read-only, takes an expl
 The launcher also works on its own, from any terminal:
 
 ```bash
-echo "Summarise src/ in 5 bullets" | py -3 ~/.claude/skills/pr-gate/scripts/lean_run.py codex --model gpt-6-luna --effort low --cwd .
-py -3 ~/.claude/skills/pr-gate/scripts/lean_run.py claude --model sonnet --mcp supabase-brofix --cwd . < prompt.txt
+echo "Summarise src/ in 5 bullets" | py -3 "$HOME/.claude/skills/pr-gate/scripts/lean_run.py" codex --model gpt-6-luna --effort low --cwd .
+py -3 "$HOME/.claude/skills/pr-gate/scripts/lean_run.py" claude --model sonnet --mcp supabase-brofix --cwd . < prompt.txt
 ```
 
 ---
