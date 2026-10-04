@@ -100,6 +100,12 @@ def build(engine, model, cwd, run_dir, effort=None, write=False, mcp=(), skills=
         argv = [_exe("codex"), "exec", "-m", model, "--ignore-user-config",
                 "--sandbox", "workspace-write" if write else "read-only",
                 "-C", str(cwd), "--json", "--skip-git-repo-check"] + codex_mcp_overrides(mcp)
+        if WIN:
+            # --ignore-user-config also drops [windows] sandbox, and with none set codex
+            # rejects EVERY command ("blocked by policy"): the reviewer reads only the
+            # prompt. unelevated: commands run, 34 s. elevated: 98 s + git "dubious
+            # ownership" (runs as a sandbox user). Measured 2026-10-04, codex-cli 0.159.2.
+            argv += ["-c", "windows.sandbox=unelevated"]
         if effort:
             argv += ["-c", f"model_reasoning_effort={effort}"]
     elif engine == "claude":

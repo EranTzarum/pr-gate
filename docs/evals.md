@@ -77,3 +77,8 @@ So cursor runs on the real profile for now, with file I/O and an explicit model.
 **Trade-off:**
 - At low effort, codex no longer flagged "negative price via apply_discount", which the stronger run graded medium.
 - The mid tier is the default. For auth, migrations or payments PRs, run `--effort medium` or a stronger `--model`.
+
+**Correction, same day: lean codex was blind.**
+- `--ignore-user-config` also drops `[windows] sandbox = "elevated"` from the user config. With no Windows sandbox set, read-only codex rejects every command ("blocked by policy"), so the 43 s "green" above came from the diff in the prompt alone.
+- Measured fix: `-c windows.sandbox=unelevated` (commands run, 34 s); `elevated` took 98 s and git refused with "dubious ownership".
+- Re-run with the fix: 36 s, 4 commands, none blocked, green with no findings.

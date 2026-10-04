@@ -47,6 +47,8 @@ class CodexTest(FakeProfile):
         self.assertIn("read-only", argv)
         self.assertIn("model_reasoning_effort=low", argv)
         self.assertEqual(argv[argv.index("-m") + 1], "gpt-6.1-sol")
+        if lean_run.WIN:  # without it, read-only codex can't run a single command
+            self.assertIn("windows.sandbox=unelevated", argv)
 
     def test_skill_grant_copies_only_that_skill(self):
         _, env = lean_run.build("codex", "m", Path("."), self.run_dir, skills=["vault-recall"])
@@ -54,7 +56,7 @@ class CodexTest(FakeProfile):
 
     def test_mcp_grant_is_valid_toml(self):
         argv, _ = lean_run.build("codex", "m", Path("."), self.run_dir, mcp=["chrome"])
-        overrides = [argv[i + 1] for i, a in enumerate(argv) if a == "-c"]
+        overrides = [argv[i + 1] for i, a in enumerate(argv) if a == "-c" and argv[i + 1].startswith("mcp_servers.")]
         for o in overrides:
             key, val = o.split("=", 1)
             tomllib.loads(f"v = {val}")
