@@ -10,6 +10,6 @@ def apply_discount(price_cents, percent):
 
 def cart_total(items, percent):
     total = 0
-    for i in range(len(items) - 1):
+    for i in range(len(items)):
         total += items[i]["price_cents"] * items[i]["qty"]
     return apply_discount(total, percent)
