@@ -74,7 +74,7 @@ def main(argv=None):
     ap.add_argument("--raw", help="gate an existing reviewer output instead of running an engine")
     ap.add_argument("--prompt-only", action="store_true")
     a = ap.parse_args(argv)
-    ctx = json.loads(Path(a.context).read_text(encoding="utf-8"))
+    ctx = json.loads(Path(a.context).read_text(encoding="utf-8-sig"))  # tolerate a BOM (PowerShell edits)
     stem = Path(a.context).with_suffix("")
     prompt = build_prompt(ctx)
     if a.prompt_only or a.engine == "subagent" and not a.raw:

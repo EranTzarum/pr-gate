@@ -82,3 +82,30 @@ So cursor runs on the real profile for now, with file I/O and an explicit model.
 - `--ignore-user-config` also drops `[windows] sandbox = "elevated"` from the user config. With no Windows sandbox set, read-only codex rejects every command ("blocked by policy"), so the 43 s "green" above came from the diff in the prompt alone.
 - Measured fix: `-c windows.sandbox=unelevated` (commands run, 34 s); `elevated` took 98 s and git refused with "dubious ownership".
 - Re-run with the fix: 36 s, 4 commands, none blocked, green with no findings.
+
+## Live run 3: 2026-10-06, a real PR end to end (workflowai-factory#10)
+
+**PR:** 18 files, +591/-43, owned by a factory session that the app had bound to the PR.
+
+The first live test of the hand-back via `send_message`, of a red CI, and of escalation.
+
+| Round | Head | CI | Codex `gpt-6.1-sol` medium | Kept | Action |
+|---|---|---|---|---|---|
+| 1 | `c558f1e4` | **fail**: windows-latest, 1 failure + 111 errors | 4 min, 30 commands, 0 blocked | 2 high, 1 medium | message delivered to the owner; it pushed |
+| 2 | `4446907a` | pass | 2.4 min | 1 medium (a side effect of the round-1 fix) | message delivered; owner pushed |
+| 3 | `ab7e9b6b` | pass | 2.5 min | 1 medium (narrow, Linux only) | **escalate** |
+
+- I spot-checked both high findings and the round-2 medium in the code; all were real. None were dropped as unverifiable.
+- Owner routing matched the session by `prNumber` alone. No PR-body marker was needed, because the app had bound the session to the PR.
+- **Merge:**
+  - Eran replied `merge`. The head and CI were re-checked as unchanged, and the merge was sent to the owner session, because the repo's own rules (`CLAUDE.md` §0) forbid this session from merging.
+  - Eran then told the owner session directly to hold until morning. pr-gate stopped waiting.
+  - The follow-up for the accepted medium is workflowai-factory#11.
+
+**Gaps found, to fix:**
+1. **The CI excerpt missed the error.** It took the last 120 lines of `--log-failed`, which were post-job cleanup. The real failure was in the test-output artifact (`gh run download`). Fix: cut the log around `##[error]`, `FAIL`, `ERROR` and `Traceback`, and pull small text artifacts from failed runs.
+2. **No check of the repo's merge rules.** pr-gate should read the repo docs for a merge or read-only rule and route the merge to the owner session when this session may not merge.
+3. **A BOM in the context JSON crashed `review.py`** (the file was written by PowerShell). It now reads with `utf-8-sig`.
+4. **The `merge_triggers` notes are noisy:** in BroFix#4 they also listed CI-only steps (`supabase db start` / `test db`).
+5. **Duplicate docs** (`ARCHITECTURE.md` both at the root and in `docs/`) are both passed to the reviewer.
+6. **No rule for draft PRs:** the report should say "mark it ready first" and never mark it ready itself.
