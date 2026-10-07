@@ -6,7 +6,7 @@ The loop is in `SKILL.md`; the reviewer prompt is `references/review-prompt.md`.
 
 ## Layout
 
-- `scripts/pr_context.py`: PR meta, redacted diff, CI state, failing-log tails, docs, merge triggers.
+- `scripts/pr_context.py`: PR meta, redacted diff, CI state + failure excerpts (log and artifacts), base-branch CI, behind-base count, docs, merge rules from the docs, merge triggers (branches/paths filters applied).
 - `scripts/review.py`: builds the prompt, runs a read-only engine via `lean_run.py` or gates a subagent's output. Default models live in `DEFAULT_MODELS`.
 - `scripts/lean_run.py`: lean headless launcher. Explicit model, no global MCPs/skills/hooks unless granted per run, file I/O, tree-kill on timeout.
 - `scripts/findings.py`: extracts and verifies findings, the gate verdict, round state (`~/.pr-gate/state`).

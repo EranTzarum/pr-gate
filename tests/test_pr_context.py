@@ -53,6 +53,56 @@ class TriggerTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             self.assertEqual(pr_context.merge_triggers(Path(d), "main"), [])
 
+    def write_wf(self, d, name, text):
+        wf = Path(d) / ".github" / "workflows"
+        wf.mkdir(parents=True, exist_ok=True)
+        (wf / name).write_text(text, encoding="utf-8")
+
+    def test_paths_filter_skips_docs_only_pr(self):
+        wf = ("on:\n  push:\n    branches: [main]\n    paths: ['supabase/migrations/**', 'supabase/functions/**']\n"
+              "jobs:\n  d:\n    steps:\n      - run: supabase db push\n")
+        with tempfile.TemporaryDirectory() as d:
+            self.write_wf(d, "deploy.yml", wf)
+            self.assertEqual(pr_context.merge_triggers(Path(d), "main", ["docs/LOG.md", "package.json"]), [])
+            hit = pr_context.merge_triggers(Path(d), "main", ["supabase/migrations/2026_x.sql"])
+        self.assertEqual([t["file"] for t in hit], ["deploy.yml"])
+
+    def test_paths_ignore_and_dash_lists(self):
+        wf = "on:\n  push:\n    branches:\n      - main\n    paths-ignore:\n      - 'docs/**'\n      - '*.md'\n"
+        with tempfile.TemporaryDirectory() as d:
+            self.write_wf(d, "ci.yml", wf)
+            self.assertEqual(pr_context.merge_triggers(Path(d), "main", ["docs/a.md", "README.md"]), [])
+            self.assertEqual(len(pr_context.merge_triggers(Path(d), "main", ["src/app.ts"])), 1)
+
+    def test_local_test_stack_is_not_notable(self):
+        wf = ("on:\n  push:\n    branches: [main]\njobs:\n  t:\n    steps:\n"
+              "      - run: supabase db start\n      - run: supabase test db\n      - run: supabase functions deploy x\n")
+        with tempfile.TemporaryDirectory() as d:
+            self.write_wf(d, "ci.yml", wf)
+            notable = pr_context.merge_triggers(Path(d), "main", ["src/a.ts"])[0]["notable"]
+        self.assertEqual(notable, ["- run: supabase functions deploy x"])
+
+    def test_glob(self):
+        self.assertTrue(pr_context.glob_match("supabase/migrations/a/b.sql", "supabase/migrations/**"))
+        self.assertFalse(pr_context.glob_match("docs/a/b.md", "docs/*.md"))
+        self.assertTrue(pr_context.glob_match("README.md", "*.md"))
+
+
+class FailureExcerptTest(unittest.TestCase):
+    def test_excerpt_finds_error_not_cleanup_tail(self):
+        lines = ["job\tstep\t2026-10-06T16:21:14.0837219Z setup line %d" % i for i in range(50)]
+        lines += ["job\tstep\t2026-10-06T16:21:15.0Z FAIL: test_identity (TestWorktree)",
+                  "job\tstep\t2026-10-06T16:21:15.1Z AssertionError: False is not true"]
+        lines += ["job\tstep\t2026-10-06T16:21:16.0Z Cleaning up orphan processes %d" % i for i in range(150)]
+        out = pr_context.extract_failure("\n".join(lines))
+        self.assertIn("FAIL: test_identity", out)
+        self.assertIn("AssertionError", out)
+        self.assertNotIn("2026-10-06T", out)  # timestamps stripped
+        self.assertLess(out.count("Cleaning up"), 6)
+
+    def test_no_hits_falls_back_to_tail(self):
+        self.assertEqual(pr_context.extract_failure("a\nb\nc"), "a\nb\nc")
+
 
 class DocsTest(unittest.TestCase):
     def test_finds_repo_docs(self):
@@ -60,9 +110,27 @@ class DocsTest(unittest.TestCase):
             root = Path(d)
             for name in ["CLAUDE.md", "AGENTS.md", "docs/ARCHITECTURE.md", "DOMAIN_MODEL.md", "notes.md"]:
                 (root / name).parent.mkdir(parents=True, exist_ok=True)
-                (root / name).write_text("x", encoding="utf-8")
+                (root / name).write_text(name, encoding="utf-8")
             docs = pr_context.repo_docs(root)
         self.assertEqual(docs, ["AGENTS.md", "CLAUDE.md", "DOMAIN_MODEL.md", "docs/ARCHITECTURE.md"])
+
+    def test_identical_copies_read_once(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "docs").mkdir()
+            (root / "ARCHITECTURE.md").write_text("same", encoding="utf-8")
+            (root / "docs" / "ARCHITECTURE.md").write_text("same", encoding="utf-8")
+            self.assertEqual(pr_context.repo_docs(root), ["ARCHITECTURE.md"])
+
+    def test_merge_rules_found(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "CLAUDE.md").write_text(
+                "# Repo\n\nIf your session did not start here you are READ-ONLY.\n"
+                "- No commits, merges, branches\nOther text\n"
+                "- `../references/` is **read-only**. Never modify it.\n", encoding="utf-8")
+            rules = pr_context.merge_rules(root, ["CLAUDE.md"])
+        self.assertEqual([r.split(":")[1] for r in rules], ["3", "4"])  # the folder note is not a merge rule
 
 
 class GatherTest(unittest.TestCase):
@@ -70,7 +138,7 @@ class GatherTest(unittest.TestCase):
 
     def test_gather_with_failing_ci(self):
         view = json.loads((FIX / "pr_view.json").read_text())
-        checks = [{"name": "test", "bucket": "fail", "state": "FAILURE",
+        checks = [{"name": "test", "bucket": "fail", "state": "FAILURE", "workflow": "CI",
                    "link": "https://github.com/o/r/actions/runs/77/job/1"}]
         calls = []
 
@@ -84,6 +152,10 @@ class GatherTest(unittest.TestCase):
                 return "diff --git a/x b/x\n+token=ghp_" + "q" * 36 + "\n"
             if args[:3] == ["gh", "run", "view"]:
                 return "step 1\nERROR password=supersecret1\n"
+            if args[:3] == ["gh", "run", "list"]:
+                return json.dumps([{"conclusion": "failure", "headSha": "abcdef123456", "createdAt": "t"}])
+            if args[:2] == ["gh", "api"] and "/compare/" in args[2]:
+                return "3\n"
             return ""
 
         orig = pr_context.run
@@ -100,6 +172,9 @@ class GatherTest(unittest.TestCase):
         self.assertNotIn("supersecret1", ctx["failed_logs"])
         self.assertNotIn("q" * 36, diff)
         self.assertFalse(any("push" in a for a in calls if a[0] == "git"))
+        self.assertEqual(ctx["base_ci"], {"CI": {"conclusion": "failure", "sha": "abcdef12", "at": "t"}})
+        self.assertEqual(ctx["behind_base"], 3)
+        self.assertEqual(ctx["merge_rules"], [])
 
 
 if __name__ == "__main__":

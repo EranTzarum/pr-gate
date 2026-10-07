@@ -41,6 +41,18 @@ class PromptTest(unittest.TestCase):
         for s in ("Add export", "- CLAUDE.md", "CI FAILED", "TypeError at export.ts:2", "+const x = 1"):
             self.assertIn(s, text)
 
+    def test_base_ci_told_to_reviewer(self):
+        with tempfile.TemporaryDirectory() as d:
+            os.environ["PR_GATE_HOME"] = d
+            try:
+                _, ctx = make_ctx(d)
+                ctx.update(base_ci={"CI": {"conclusion": "failure", "sha": "abc12345"}}, behind_base=0)
+                text = review.build_prompt(ctx)
+            finally:
+                del os.environ["PR_GATE_HOME"]
+        self.assertIn("CI failure @ abc12345", text)
+        self.assertIn("the PR did not cause it", text)
+
 
 class EngineDefaultsTest(unittest.TestCase):
     def test_defaults_are_explicit_mid_tier(self):

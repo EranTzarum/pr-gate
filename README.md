@@ -9,7 +9,7 @@ A skill that reviews each pull request, sends the fixes back to the session that
 
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-skill-16A34A)](#quick-start)
 [![Reviewers](https://img.shields.io/badge/reviewers-codex%20%C2%B7%20claude%20%C2%B7%20cursor-052E16)](#pick-a-reviewer)
-[![Tests](https://img.shields.io/badge/tests-52%20passing-16A34A)](#verify)
+[![Tests](https://img.shields.io/badge/tests-61%20passing-16A34A)](#verify)
 [![License: MIT](https://img.shields.io/badge/license-MIT-052E16)](LICENSE)
 
 </div>
@@ -66,7 +66,7 @@ Needs `gh` (logged in) and Python 3. Each reviewer needs its own CLI: `codex`, `
 py -3 -m unittest discover tests
 ```
 
-Expected: `Ran 52 tests ... OK`. No network calls; `gh` is mocked.
+Expected: `Ran 61 tests ... OK`. No network calls; `gh` is mocked.
 
 ---
 

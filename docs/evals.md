@@ -109,3 +109,44 @@ The first live test of the hand-back via `send_message`, of a red CI, and of esc
 4. **The `merge_triggers` notes are noisy:** in BroFix#4 they also listed CI-only steps (`supabase db start` / `test db`).
 5. **Duplicate docs** (`ARCHITECTURE.md` both at the root and in `docs/`) are both passed to the reviewer.
 6. **No rule for draft PRs:** the report should say "mark it ready first" and never mark it ready itself.
+
+## Live run 4: 2026-10-07, first real merge (brofix#8, docs plus a dependency fix)
+
+- **Round 1:** CI red. expo-doctor reported "8 packages out of date"; Expo had released patches since the base was last green, so the PR did not cause it. Codex took 72 s, found that and a real docs bug (a chat rule contradicting DOMAIN_MODEL invariant 10).
+- **Decision:** Eran chose to fix the dependencies in the same PR. The fix request went by message to the owner session, which pushed two commits.
+- **Round 2:** CI green; Codex took 58 s and found nothing. Green report, then `merge`.
+- **Merge:** re-checked, then squash with `--match-head-commit`. Merge commit `f36fa053`; only CI ran on main, no deploy (correct: `deploy.yml` has a `paths:` filter).
+- **Total:** about 20 minutes, including the owner's fixes.
+
+## Live run 5: 2026-10-07, Eran ran `/pr-gate` himself (brofix#7, 1-file keep-alive workflow)
+
+The run went from start to merged in about 15 minutes (07:39 to 07:54 UTC):
+- **Round 1:** CI red (the same stale-Expo failure). Codex took about 3 min; its only finding was that failure.
+- **Fix:** after #8 merged, the host noticed main already had the fix and merged main into the PR branch.
+- **Round 2:** CI green, no findings.
+- **Merge:** `merge` → re-check → squash with the head pinned → `54418d7c`.
+- The reports were clear and in the skill's format.
+
+**Problems seen:**
+- **The host was also the PR's owner** (the session that wrote it), and the skill had no rule for that. It improvised and pushed to the PR branch, which the skill then forbade.
+- **The same stale-CI case had to be reasoned out by hand.**
+
+## Fixes after runs 3 to 5 (61 tests)
+
+- **`pr_context.py`:**
+  - Failure excerpts are cut around error lines, not the log tail, and small text artifacts of failed runs are included.
+  - New fields:
+    - `base_ci`: the latest run of each failing workflow on the base;
+    - `behind_base`;
+    - `merge_state`;
+    - `merge_rules`: lines in the repo docs about who may merge or write.
+  - Identical doc copies are read once.
+  - `merge_triggers` applies `branches`/`paths`/`paths-ignore` filters and lists only deploy-like steps.
+  - Fixed a regex bug that made every `push:` block look bare, so filters were never applied. This is why BroFix #4 was wrongly reported as deploying.
+- **`review.py`:** reads the context with `utf-8-sig`, and tells the reviewer when the base fails the same way.
+- **`SKILL.md`:**
+  - *When you are the owner*: fix and push to the PR branch yourself; the review stays external.
+  - Red CI the PR didn't cause: ask once; or update from the base if the base is already green.
+  - Repos whose rules forbid this session from merging: send the pinned merge command to the owner session.
+  - Drafts: never offer `merge`.
+  - The green report gets a "Note" line.

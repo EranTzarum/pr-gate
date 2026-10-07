@@ -38,7 +38,13 @@ def build_prompt(ctx):
     docs = "\n".join(f"- {d}" for d in ctx["docs"]) or "- (none found; use the code's own conventions)"
     ci = {"pass": "CI passed.", "pending": "CI still running; judge the code only.",
           "none": "This repo has no CI on this PR. Look harder at what tests would have caught.",
-          "fail": "CI FAILED. Failing job logs (tail, redacted):\n```\n" + ctx["failed_logs"] + "\n```"}[ctx["ci"]]
+          "fail": "CI FAILED. Failure excerpts (redacted):\n```\n" + ctx["failed_logs"] + "\n```"}[ctx["ci"]]
+    base_runs = ctx.get("base_ci") or {}
+    if ctx["ci"] == "fail" and base_runs:
+        ci += "\nLatest run of each failing workflow on " + ctx["base"] + ": " + ", ".join(
+            f"{wf} {r.get('conclusion')} @ {r.get('sha')}" for wf, r in base_runs.items())
+        ci += (f". The PR is {ctx.get('behind_base')} commit(s) behind {ctx['base']}. If the base fails the same "
+               "way, the PR did not cause it: say so in the finding's scenario.")
     earlier = [r for r in findings.load(ctx["repo"], ctx["pr"])["rounds"] if r["sha"] != ctx["head_sha"]]
     history = "\n".join(
         f"- round {n} @ {r['sha'][:8]}: " + ("; ".join(
