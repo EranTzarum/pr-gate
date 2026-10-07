@@ -19,7 +19,7 @@ Turning on any option below is your decision. Each one is a separate yes.
 1. **Not now.** Run `/pr-gate` by hand on real PRs first, for 2–3 weeks. Watch
    the false-positive rate in `docs/evals.md`. A noisy reviewer that runs
    unattended sends noise to your sessions.
-2. **Then a scheduled local poll**, in the factory or as a Claude Code
+2. **Then a scheduled local poll**, in your own orchestrator or as a Claude Code
    scheduled task. It is the only option that keeps both of your choices: the
    reviewer is picked per run, and the hand-back goes to your sessions. It
    also stores no new secret anywhere.
@@ -55,10 +55,9 @@ Turning on any option below is your decision. Each one is a separate yes.
 | A merge triggers a deploy you didn't expect | The green report lists merge-triggered workflows (for example a `supabase db push` workflow) before you reply. |
 | An unattended run fires at a bad time | No unattended runs exist yet. When added: a schedule window plus one PR at a time. |
 
-## Factory
+## Orchestrators
 
-`workflowai-factory` is read-only from here, so this repo makes no change
-there. The fitting factory piece is a crew **pr-review seat** that reuses
-`references/review-prompt.md` and `scripts/findings.py`, so a crew run can
-review its own PR before it reaches you. It is tracked as an issue in
-`workflowai-factory`.
+If you run a multi-agent orchestrator, the fitting piece there is a **pr-review
+seat** that reuses `references/review-prompt.md` and `scripts/findings.py`, so a
+run can
+review its own PR before it reaches you.

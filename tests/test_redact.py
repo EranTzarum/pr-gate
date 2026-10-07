@@ -1,3 +1,4 @@
+# readmelyzer:allow-examples (fake secrets on purpose)
 import sys
 import unittest
 from pathlib import Path

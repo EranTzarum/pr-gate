@@ -1,8 +1,8 @@
 """Run one headless agent turn lean: explicit model, no global MCPs/skills/hooks
-unless granted for this run. Pattern taken from crew's measured worker sandboxes.
+unless granted for this run. Same pattern as an orchestrator's worker sandboxes.
 
   py -3 lean_run.py codex  --model gpt-6.1-sol --effort low  --cwd DIR < prompt.txt
-  py -3 lean_run.py claude --model sonnet --cwd DIR --mcp supabase-brofix < prompt.txt
+  py -3 lean_run.py claude --model sonnet --cwd DIR --mcp my-db < prompt.txt
   py -3 lean_run.py cursor --model composer-2.5 --cwd DIR < prompt.txt
 
 Read-only by default (--write lifts it). Prints the engine's stdout; exit 3 on
@@ -25,7 +25,7 @@ from pathlib import Path
 
 ENGINES = ("codex", "claude", "cursor")
 DEFAULT_TIMEOUT_S = 900
-# A worker's CODEX_HOME may hold only these (crew CODEX_SANDBOX_KEEP).
+# A lean CODEX_HOME holds only these.
 CODEX_KEEP = ("auth.json", "installation_id")
 WIN = sys.platform.startswith("win")
 
@@ -35,7 +35,7 @@ def _exe(name):
 
 
 def _wrap(argv):
-    # npm/.cmd shims need cmd /c on Windows (as crew does).
+    # npm/.cmd shims need cmd /c on Windows.
     return ["cmd", "/c"] + argv if WIN else argv
 
 

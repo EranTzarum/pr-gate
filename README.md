@@ -134,7 +134,7 @@ You pick the engine per run, and you can override the model with `--model` and `
 
 ### Lean runs
 
-Every reviewer runs through `scripts/lean_run.py`. It's read-only, takes an explicit model, and loads none of your global MCP servers, skills, plugins or hooks, unless you grant one for that run. Same idea as the factory's worker sandboxes:
+Every reviewer runs through `scripts/lean_run.py`. It's read-only, takes an explicit model, and loads none of your global MCP servers, skills, plugins or hooks, unless you grant one for that run. Same idea as the worker sandboxes multi-agent orchestrators use:
 
 | Engine | What's left out | One-line prompt, before → after |
 |---|---|---|
@@ -146,7 +146,7 @@ The launcher also works on its own, from any terminal:
 
 ```bash
 echo "Summarise src/ in 5 bullets" | py -3 "$HOME/.claude/skills/pr-gate/scripts/lean_run.py" codex --model gpt-6-luna --effort low --cwd .
-cat prompt.txt | py -3 "$HOME/.claude/skills/pr-gate/scripts/lean_run.py" claude --model sonnet --mcp supabase-brofix --cwd .
+cat prompt.txt | py -3 "$HOME/.claude/skills/pr-gate/scripts/lean_run.py" claude --model sonnet --mcp my-db --cwd .
 ```
 
 ---

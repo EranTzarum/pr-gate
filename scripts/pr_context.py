@@ -28,7 +28,7 @@ DOC_NAMES = re.compile(r"^(AGENTS|CLAUDE|ARCHITECTURE|DOMAIN_MODEL|SECURITY|CONT
 NOTABLE = re.compile(r"deploy|db push|publish|release|vercel|netlify|eas (submit|update)|"
                      r"terraform apply|kubectl apply|docker push|gh-pages|heroku", re.I)
 # Lines worth showing from a failed CI log. The tail of --log-failed is usually
-# post-job cleanup, so cut around these instead (measured on factory#10).
+# post-job cleanup, so cut around these instead (seen on a real PR).
 FAILURE_LINE = re.compile(r"##\[error\]|\bFAIL(ED)?\b|\bERROR\b|Error:|Traceback|AssertionError|"
                           r"error TS\d+|\bfailed\b|✕|panicked", re.I)
 # Rules about who may merge or write, not "folder X is read-only" notes.

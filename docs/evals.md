@@ -65,7 +65,7 @@ Codex and Claude had the same problem. `scripts/lean_run.py` now runs every revi
 | claude `--bare` | | not logged in, so not used |
 | cursor `composer-2.5` | pipes: timeout (>240 s); files: 91 s | empty-HOME sandbox: timeout (>150 s), even though `agent status` says logged in |
 
-So cursor runs on the real profile for now, with file I/O and an explicit model. This is tracked in workflowai-factory#9.
+So cursor runs on the real profile for now, with file I/O and an explicit model. This is tracked as an issue in the orchestrator repo.
 
 **Same review as live run 1, round 3** (head `a3a058f9`):
 
@@ -83,9 +83,9 @@ So cursor runs on the real profile for now, with file I/O and an explicit model.
 - Measured fix: `-c windows.sandbox=unelevated` (commands run, 34 s); `elevated` took 98 s and git refused with "dubious ownership".
 - Re-run with the fix: 36 s, 4 commands, none blocked, green with no findings.
 
-## Live run 3: 2026-10-06, a real PR end to end (workflowai-factory#10)
+## Live run 3: 2026-10-06, a real PR end to end (a private orchestrator repo)
 
-**PR:** 18 files, +591/-43, owned by a factory session that the app had bound to the PR.
+**PR:** 18 files, +591/-43, owned by an agent session that the app had bound to the PR.
 
 The first live test of the hand-back via `send_message`, of a red CI, and of escalation.
 
@@ -98,31 +98,31 @@ The first live test of the hand-back via `send_message`, of a red CI, and of esc
 - I spot-checked both high findings and the round-2 medium in the code; all were real. None were dropped as unverifiable.
 - Owner routing matched the session by `prNumber` alone. No PR-body marker was needed, because the app had bound the session to the PR.
 - **Merge:**
-  - Eran replied `merge`. The head and CI were re-checked as unchanged, and the merge was sent to the owner session, because the repo's own rules (`CLAUDE.md` §0) forbid this session from merging.
-  - Eran then told the owner session directly to hold until morning. pr-gate stopped waiting.
-  - The follow-up for the accepted medium is workflowai-factory#11.
+  - The user replied `merge`. The head and CI were re-checked as unchanged, and the merge was sent to the owner session, because the repo's own rules (`CLAUDE.md` §0) forbid this session from merging.
+  - The user then told the owner session directly to hold until morning. pr-gate stopped waiting.
+  - The accepted medium became a follow-up issue in that repo.
 
 **Gaps found, to fix:**
 1. **The CI excerpt missed the error.** It took the last 120 lines of `--log-failed`, which were post-job cleanup. The real failure was in the test-output artifact (`gh run download`). Fix: cut the log around `##[error]`, `FAIL`, `ERROR` and `Traceback`, and pull small text artifacts from failed runs.
 2. **No check of the repo's merge rules.** pr-gate should read the repo docs for a merge or read-only rule and route the merge to the owner session when this session may not merge.
 3. **A BOM in the context JSON crashed `review.py`** (the file was written by PowerShell). It now reads with `utf-8-sig`.
-4. **The `merge_triggers` notes are noisy:** in BroFix#4 they also listed CI-only steps (`supabase db start` / `test db`).
+4. **The `merge_triggers` notes are noisy:** on a mobile-app PR they also listed CI-only steps (`supabase db start` / `test db`).
 5. **Duplicate docs** (`ARCHITECTURE.md` both at the root and in `docs/`) are both passed to the reviewer.
 6. **No rule for draft PRs:** the report should say "mark it ready first" and never mark it ready itself.
 
-## Live run 4: 2026-10-07, first real merge (brofix#8, docs plus a dependency fix)
+## Live run 4: 2026-10-07, first real merge (a mobile-app repo: docs plus a dependency fix)
 
-- **Round 1:** CI red. expo-doctor reported "8 packages out of date"; Expo had released patches since the base was last green, so the PR did not cause it. Codex took 72 s, found that and a real docs bug (a chat rule contradicting DOMAIN_MODEL invariant 10).
-- **Decision:** Eran chose to fix the dependencies in the same PR. The fix request went by message to the owner session, which pushed two commits.
+- **Round 1:** CI red. expo-doctor reported "8 packages out of date"; Expo had released patches since the base was last green, so the PR did not cause it. Codex took 72 s, found that and a real docs bug (a rule contradicting an invariant in DOMAIN_MODEL.md).
+- **Decision:** the user chose to fix the dependencies in the same PR. The fix request went by message to the owner session, which pushed two commits.
 - **Round 2:** CI green; Codex took 58 s and found nothing. Green report, then `merge`.
 - **Merge:** re-checked, then squash with `--match-head-commit`. Merge commit `f36fa053`; only CI ran on main, no deploy (correct: `deploy.yml` has a `paths:` filter).
 - **Total:** about 20 minutes, including the owner's fixes.
 
-## Live run 5: 2026-10-07, Eran ran `/pr-gate` himself (brofix#7, 1-file keep-alive workflow)
+## Live run 5: 2026-10-07, the user ran `/pr-gate` themself (same app repo, a 1-file scheduled workflow)
 
 The run went from start to merged in about 15 minutes (07:39 to 07:54 UTC):
 - **Round 1:** CI red (the same stale-Expo failure). Codex took about 3 min; its only finding was that failure.
-- **Fix:** after #8 merged, the host noticed main already had the fix and merged main into the PR branch.
+- **Fix:** after run 4's PR merged, the host noticed main already had the fix and merged main into the PR branch.
 - **Round 2:** CI green, no findings.
 - **Merge:** `merge` → re-check → squash with the head pinned → `54418d7c`.
 - The reports were clear and in the skill's format.
@@ -142,7 +142,7 @@ The run went from start to merged in about 15 minutes (07:39 to 07:54 UTC):
     - `merge_rules`: lines in the repo docs about who may merge or write.
   - Identical doc copies are read once.
   - `merge_triggers` applies `branches`/`paths`/`paths-ignore` filters and lists only deploy-like steps.
-  - Fixed a regex bug that made every `push:` block look bare, so filters were never applied. This is why BroFix #4 was wrongly reported as deploying.
+  - Fixed a regex bug that made every `push:` block look bare, so filters were never applied. This is why an earlier app PR was wrongly reported as deploying.
 - **`review.py`:** reads the context with `utf-8-sig`, and tells the reviewer when the base fails the same way.
 - **`SKILL.md`:**
   - *When you are the owner*: fix and push to the PR branch yourself; the review stays external.

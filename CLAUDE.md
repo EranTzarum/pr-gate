@@ -22,6 +22,16 @@ The loop is in `SKILL.md`; the reviewer prompt is `references/review-prompt.md`.
 - Nothing in this repo merges, pushes, edits repo settings or creates schedules.
 - New secret patterns go into `redact.py` with a test.
 - Fixtures are invented; never commit real PR diffs or CI logs.
+- **This repo is public.** No personal paths, usernames, private project or
+  client names, real prompts or logs in any tracked file. Evals describe real
+  runs by shape ("a mobile-app repo", "an orchestrator repo"), never by name.
+  Before every push:
+  `node ~/.claude/skills/readmelyzer/scripts/check-readme.mjs . --public --all-files`
+  must print no `LEAK:` line.
+
+## Resuming work
+
+Start at `docs/TAKEOVER.md`: state, open items, how to test, and where the evidence is.
 
 ## Gate
 

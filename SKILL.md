@@ -186,7 +186,7 @@ Reply on the PR or just push; pr-gate re-reviews the new head.
 
 ## Reports to the user
 
-Plain language, no code reading needed. Hebrew in → Hebrew out.
+Plain language, no code reading needed. Reply in the user's language.
 
 **Green report** (then stop and wait):
 
