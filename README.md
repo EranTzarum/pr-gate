@@ -60,13 +60,28 @@ Then, in any Claude Code session:
 
 Needs `gh` (logged in) and Python 3. Each reviewer needs its own CLI: `codex`, `claude` or Cursor's `agent`.
 
+### Fix requests from any host: the inbox mod
+
+From the Claude desktop app, pr-gate messages the owner session directly. From anywhere else (Codex, Cursor, a plain terminal), or when no session matches, it drops the fix request in `~/.pr-gate/inbox/` and also comments on the PR. `mod/` is a Claude Code mod (a plugin of function hooks) for the sessions that write PRs:
+- every minute it asks `gh` which PR the session's branch has;
+- it starts a turn with any fix request for that PR once the session is idle;
+- it shows the PR's pr-gate round in the status line.
+`/pr-gate-inbox` checks right away.
+
+```bash
+claude --plugin-dir "$HOME/.claude/skills/pr-gate/mod"
+```
+
+Or add the folder to `CLAUDE_CODE_PLUGIN_DIRS` so every session loads it. Headless runs (`claude -p`) never pick anything up. The mod API is early access; the PR comment keeps working without it.
+
 ### Verify
 
 ```bash
 py -3 -m unittest discover tests
+claude plugin test mod
 ```
 
-Expected: `Ran 61 tests ... OK`. No network calls; `gh` is mocked.
+Expected: `Ran 71 tests ... OK` and `3 pass`. No network calls; `gh` is mocked.
 
 ---
 
@@ -127,10 +142,13 @@ Each round, the reviewer sees the earlier rounds' findings and keeps each one's 
 |---|---|---|
 | `codex` | `gpt-6.1-sol`, low effort | Default when the host is Claude |
 | `claude` | `sonnet` | Default when the host is Codex or Cursor |
-| `cursor` | `composer-2.5` | Slow: about 90 s before it answers anything ([evals](docs/evals.md)) |
+| `both` | codex and claude, findings merged | Offered for high-risk PRs; a cross-engine duplicate (same file, within 3 lines) is kept once, at the higher severity |
+| `cursor` | `composer-2.5` | Opt-in only, never the default. 45–110 s of startup, and it carries your Cursor account's plugins and MCP tools whatever the sandbox ([evals](docs/evals.md)) |
 | `subagent` | An Agent-tool subagent in the same session | Fresh context, same model family |
 
 You pick the engine per run, and you can override the model with `--model` and `--effort`. If the engine fails, pr-gate tells you and offers the next one. It never switches engines silently.
+
+**High-risk PRs get a stronger pass.** When the changed files touch migrations, auth/RLS, CI workflows or payments, codex runs at medium effort and claude runs `opus`, unless you pass `--model` or `--effort`. The reviewer is told which files triggered it, and the report says so.
 
 ### Lean runs
 
@@ -140,7 +158,7 @@ Every reviewer runs through `scripts/lean_run.py`. It's read-only, takes an expl
 |---|---|---|
 | codex | Everything in `~/.codex` except the login | timeout (>180 s) → 20 s |
 | claude | User settings, hooks, plugins, skills, MCPs (the repo's own rules still apply) | 23 s → 7 s |
-| cursor | Nothing yet: its sandbox hangs on the current CLI; uses file I/O instead of pipes | hang → 91 s |
+| cursor | Nothing: the CLI fetches the account's plugins from the server whatever `HOME` is; uses file I/O | 45–110 s either way |
 
 The launcher also works on its own, from any terminal:
 
@@ -177,6 +195,8 @@ Not enabled. [docs/automation.md](docs/automation.md) compares a scheduled local
 | `scripts/review.py` | Runs a read-only engine and gates its output |
 | `scripts/lean_run.py` | Lean headless launcher for codex, claude and cursor (also usable on its own) |
 | `scripts/findings.py` | Verifies findings, decides the verdict, keeps round state |
+| `scripts/handoff.py` | Writes a fix request to `~/.pr-gate/inbox/` for the inbox mod |
+| `mod/` | The inbox mod: delivers fix requests to the session whose branch has the PR |
 | `scripts/wait.py` | Waits for CI or a new push, as a process rather than a polling model |
 | `scripts/redact.py` | Secret masking |
 | `CLAUDE.md`, `AGENTS.md` | Rules for working on this repo |

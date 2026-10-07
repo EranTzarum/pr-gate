@@ -29,20 +29,29 @@ run with `py -3` on Windows (`python3` elsewhere). State lives in
 
 ## Inputs
 
-`/pr-gate <owner/repo> <PR#> [--reviewer codex|claude|cursor|subagent] [--model M] [--effort E]`
+`/pr-gate <owner/repo> <PR#> [--reviewer codex|claude|both|cursor|subagent] [--model M] [--effort E]`
 
 Default models are mid tier (codex `gpt-6.1-sol` at low effort, claude `sonnet`,
-cursor `composer-2.5`). Use a stronger `--model` only when asked, or for a
-high-risk PR (auth, migrations, payments), and say so in the report.
+cursor `composer-2.5`). A **high-risk PR** (context `risk.level: high`:
+migrations, auth/RLS, CI workflows, payments) is raised automatically: codex at
+medium effort, claude `opus`. The result carries `escalated`; say so in the
+report. `--model`/`--effort` override it.
 `/pr-gate <owner/repo> --all-open` → `gh pr list -R <repo> --state open --json number,title,isDraft`,
 skip drafts, run the loop for each PR **one after another**.
 
 **Reviewer choice.** Use `--reviewer` if given. Otherwise ask the user once,
 in one line, offering the default: the *other* model from the host (Claude host
-→ `codex`; Codex host → `claude`; Cursor host → `claude`). If the chosen engine
-fails (missing CLI, quota, error exit), say so and offer the next one; don't
-silently switch. `subagent` = an Agent-tool subagent in this session (Claude
-Code only): fresh context, same model family.
+→ `codex`; Codex host → `claude`; Cursor host → `claude`). For a high-risk PR,
+offer `both` first (codex and claude on the same prompt, findings merged; a
+cross-engine duplicate within 3 lines is kept once, at the higher severity; if
+one engine fails the result says `partial` and the round still counts). If
+the chosen engine fails (missing CLI, quota, error exit), say so and offer the
+next one; don't silently switch. `subagent` = an Agent-tool subagent in this
+session (Claude Code only): fresh context, same model family.
+
+`cursor` is opt-in only: never the default, never offered first. It takes
+45–110 s to start and always carries the Cursor account's plugins and MCP tools
+(mail, calendar, deploy), whatever the sandbox. Use it only when the user asks.
 
 ## The loop (one PR)
 
@@ -81,7 +90,7 @@ the PR head detached and writes one context JSON (`context_file`):
 ### 3. Review
 
 ```bash
-py -3 <skill>/scripts/review.py <context_file> --engine codex|claude|cursor [--model M] [--effort E]
+py -3 <skill>/scripts/review.py <context_file> --engine codex|claude|both|cursor [--model M] [--effort E]
 ```
 
 Long-running: run it in the background. For `subagent`: run with
@@ -93,8 +102,7 @@ The result JSON: `summary`, `kept` (verified findings, worst first), `dropped`
 (with a reason: not at a real line, no scenario, duplicate…), `verdict`,
 `round`, `action`. Exit 2/3 = no usable reviewer output (bad JSON, error, or no answer in 15 min,
 after which the engine's process tree is killed): report it and offer another
-engine. Nothing is recorded, so it does not use up a round. `cursor` is slow (about
-90 s before it answers anything, see `docs/evals.md`); prefer codex or claude.
+engine. Nothing is recorded, so it does not use up a round.
 
 Spot-check: open the top blocker/high finding's `file:line` in the checkout
 yourself. If it is plainly wrong, move it to dropped and say so.
@@ -158,17 +166,27 @@ Say "fixed by the owner session (this one)" in the reports.
 
 ## Owner routing (fix requests)
 
-1. **Marker** in the PR body: `<!-- pr-gate:session=<id> host=claude-desktop -->`
-   → `ccd_session_mgmt` `send_message` (or `SendMessage` to `local_<id>`).
-2. **No marker** → `list_sessions` (non-archived) and match a session whose
-   `prNumber` equals the PR number **and** whose `cwd` is a checkout of the
-   PR's repo (`git -C <cwd> remote get-url origin`). Exactly one match → send
-   to it. Zero or several → don't guess.
-3. **Fallback** → post the fix request as a PR comment
-   (`gh pr comment <N> -R <repo> --body-file <file>`) and tell the user which
-   session should pick it up.
+Write the fix request to a file first (`<work>/fix-<sha8>.md`), then:
 
-`send_message` reports `delivered`/`queued`/error; on error use step 3.
+1. **App message** (Claude desktop host only). A marker in the PR body
+   (`<!-- pr-gate:session=<id> host=claude-desktop -->`, optional) names the
+   session. Otherwise `list_sessions` (non-archived): match a session whose
+   `prNumber` equals the PR number **and** whose `cwd` is a checkout of the
+   PR's repo (`git -C <cwd> remote get-url origin`). Exactly one match →
+   `ccd_session_mgmt` `send_message`. `delivered`/`queued` → done.
+2. **Otherwise (any host, no match, or an error): the inbox, plus a PR comment.**
+   ```bash
+   py -3 <skill>/scripts/handoff.py send <owner/repo> <N> --sha <head_sha> --body-file <file>
+   gh pr comment <N> -R <repo> --body-file <file>
+   ```
+   The inbox mod (`mod/`, see README) in the owner's Claude Code session picks
+   the file up for the PR its branch has, and starts a turn with it once that
+   session is idle. The comment is the record and reaches an owner without the
+   mod. `handoff.py taken <owner/repo> <N> --sha <head_sha>` says whether a
+   session took it; report that, and name the session that should act if
+   nobody did.
+
+Then wait for a push as in step 4.
 
 **Fix request text** (keep it self-contained; the owner has none of your context):
 
@@ -215,8 +233,8 @@ Options: <e.g. take over the branch, split the PR, accept the risk>
 
 - **Claude Code (desktop)**: everything above.
 - **Codex / Cursor / CLI without the app tools**: no `send_message`, so owner
-  routing goes straight to the PR comment fallback; run `wait.py` as a normal
-  blocking command. Default reviewer from Codex is `claude`.
+  routing goes straight to step 2 (inbox + PR comment); run `wait.py` as a
+  normal blocking command. Default reviewer from Codex is `claude`.
 
 ## Automation
 

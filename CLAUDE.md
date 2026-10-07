@@ -12,6 +12,8 @@ The loop is in `SKILL.md`; the reviewer prompt is `references/review-prompt.md`.
 - `scripts/findings.py`: extracts and verifies findings, the gate verdict, round state (`~/.pr-gate/state`).
 - `scripts/wait.py`: blocks until CI settles or a new head SHA lands.
 - `scripts/redact.py`: secret masking; every script's output passes through it.
+- `scripts/handoff.py`: writes a fix request to `~/.pr-gate/inbox/<key>.<sha8>.md`; `findings.key()` is the shared file-name key.
+- `mod/`: the inbox mod (Claude Code function hooks, TypeScript). Delivers inbox files to the session whose branch has the PR; status line. Its `keyOf` must match `findings.key()`.
 - `docs/evals.md`: live runs. `docs/automation.md`: unattended options (none enabled).
 
 ## Rules
@@ -37,4 +39,5 @@ Start at `docs/TAKEOVER.md`: state, open items, how to test, and where the evide
 
 ```bash
 py -3 -m unittest discover tests
+claude plugin validate mod && claude plugin test mod   # when mod/ changed
 ```

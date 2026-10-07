@@ -16,6 +16,7 @@ SEVERITIES = ("blocker", "high", "medium", "low")
 BLOCKING = {"blocker", "high", "medium"}
 MAX_ROUNDS = 3
 MIN_SCENARIO = 25  # shorter than this is "might be an issue", not a failure scenario
+DUP_WINDOW = 3  # lines; cross-engine duplicates only
 
 
 def _first_json(text):
@@ -71,7 +72,9 @@ def verify(items, root):
     concrete failure scenario. Returns (kept, dropped-with-reason)."""
     root = Path(root).resolve()
     kept, dropped, seen = [], [], set()
-    for it in items:
+    # Worst first, so a duplicate keeps the higher severity.
+    rank = lambda i: SEVERITIES.index(i["severity"]) if isinstance(i, dict) and i.get("severity") in SEVERITIES else 9  # noqa: E731
+    for it in sorted(items, key=rank):
         it = dict(it) if isinstance(it, dict) else {}
         reason = None
         file, line = str(it.get("file", "")), it.get("line")
@@ -100,7 +103,10 @@ def verify(items, root):
         else:
             it["file"], it["line"] = file.replace("\\", "/"), line
             key = (it["file"], line, it.get("title", ""))
-            if key in seen:
+            # Two engines (--engine both) word the same issue differently: same file, within 3 lines.
+            other = any(k["file"] == it["file"] and abs(k["line"] - line) <= DUP_WINDOW
+                        and it.get("engine") and k.get("engine") not in (None, it["engine"]) for k in kept)
+            if key in seen or other:
                 reason = "duplicate"
             else:
                 seen.add(key)
@@ -120,12 +126,19 @@ def gate(ci, items):
     return "green"
 
 
+def home():
+    return Path(os.environ.get("PR_GATE_HOME") or Path.home() / ".pr-gate")
+
+
+def key(repo, pr):
+    """File-name key for one PR, shared by state/, inbox/ and the inbox mod (mod/hooks/register.ts)."""
+    return re.sub(r"[^A-Za-z0-9_-]+", "_", repo.replace("/", "__")).strip("_") + f"__{int(pr)}"
+
+
 def _state_path(repo, pr):
-    home = Path(os.environ.get("PR_GATE_HOME") or Path.home() / ".pr-gate")
-    safe = re.sub(r"[^A-Za-z0-9_-]+", "_", repo.replace("/", "__")).strip("_")
-    d = home / "state"
+    d = home() / "state"
     d.mkdir(parents=True, exist_ok=True)
-    return d / f"{safe}__{int(pr)}.json"
+    return d / f"{key(repo, pr)}.json"
 
 
 def load(repo, pr):

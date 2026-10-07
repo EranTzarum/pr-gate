@@ -159,6 +159,19 @@ def merge_rules(root, docs):
     return out[:6]
 
 
+# ponytail: path-name heuristics. A miss means a mid-tier review, not no review.
+RISK = (("migration", re.compile(r"(^|/)migrations?/|\.sql$|(^|/)supabase/", re.I)),
+        ("auth", re.compile(r"(^|/)auth(n|z|entication|orization)?([/._-]|$)|\brls\b|_rls|rls_|polic(y|ies)|permissions?", re.I)),
+        ("workflow", re.compile(r"^\.github/workflows/", re.I)),
+        ("payment", re.compile(r"payment|billing|stripe|checkout|invoice|subscription", re.I)))
+
+
+def risk(files):
+    """High when the PR touches migrations, auth/RLS, CI workflows or payments."""
+    why = [f"{name}: {f}" for f in files or [] for name, rx in RISK if rx.search(f or "")]
+    return {"level": "high" if why else "normal", "why": why[:6]}
+
+
 def glob_match(path, pattern):
     """GitHub Actions path glob: ** crosses folders, * does not."""
     rx = ""
@@ -305,6 +318,7 @@ def gather(repo, pr, work):
         "docs": docs,
         "merge_rules": merge_rules(root, docs),
         "merge_triggers": merge_triggers(root, base, files),
+        "risk": risk(files),
     }
     out = work / f"{safe}__{pr}.json"
     out.write_text(json.dumps(ctx, indent=2), encoding="utf-8")
@@ -323,7 +337,7 @@ def main(argv=None):
     ctx = gather(a.repo, a.pr, a.work)
     print(json.dumps({k: ctx[k] for k in ("context_file", "ci", "base_ci", "head_sha", "draft",
                                           "merge_state", "behind_base", "owner", "docs",
-                                          "merge_rules", "merge_triggers", "size")}, indent=2))
+                                          "merge_rules", "merge_triggers", "risk", "size")}, indent=2))
     return 0
 
 

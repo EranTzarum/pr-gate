@@ -11,8 +11,11 @@ timeout (process tree killed), else the engine's exit code.
 Measured 2026-10-04, one-line prompt:
   codex  real profile >180s (timeout)  ->  empty CODEX_HOME 20s
   claude real profile 23s              ->  user settings off 6.7s (--bare breaks login)
-  cursor pipes hang; file I/O 91s. Its empty-HOME sandbox hangs on CLI 2026.10.01,
-         so cursor still runs on the real profile (ponytail: switch back when fixed).
+  cursor 45-110s of startup on any profile (re-measured 2026-10-06, CLI 2026.10.01: no
+         hang; the earlier "hang" was this startup running past short timeouts). The CLI
+         fetches the Cursor account's plugins and MCP servers from the server whatever
+         HOME is, so a sandbox buys nothing: cursor runs on the real profile and carries
+         those tools. Opt-in only.
 """
 import argparse
 import json

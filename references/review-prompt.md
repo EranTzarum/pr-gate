@@ -16,6 +16,10 @@ standard this change is held to:
 
 {{CI}}
 
+## Risk
+
+{{RISK}}
+
 ## Earlier rounds on this PR
 
 {{HISTORY}}

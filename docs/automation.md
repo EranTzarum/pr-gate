@@ -37,8 +37,9 @@ Turning on any option below is your decision. Each one is a separate yes.
 - **Per round:** one reviewer run, plus `gh` calls, which are free.
   - The cost of a reviewer run scales with diff size plus the repo docs it reads.
   - A typical feature PR (a few hundred lines) is one review session. On a
-    subscription that is quota, not dollars. On the API, `review.py` caps a
-    Claude run at `--max-budget-usd 5`.
+    subscription that is quota, not dollars. There is no dollar cap; the
+    15-minute timeout and the mid-tier default models bound a run. A high-risk
+    PR (or `--engine both`) costs one to two stronger runs.
   - The eval run's numbers are in `docs/evals.md`.
 - **Worst case per PR:** 3 rounds, then escalate.
 - **Polling:** costs nothing while no PR changes. `wait.py` and the scheduled

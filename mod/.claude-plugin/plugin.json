@@ -1,0 +1,5 @@
+{
+  "name": "pr-gate-inbox",
+  "version": "0.1.0",
+  "description": "Delivers pr-gate fix requests from ~/.pr-gate/inbox to the session whose branch has that PR, and shows its pr-gate round in the status line."
+}

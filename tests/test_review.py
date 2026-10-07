@@ -89,6 +89,82 @@ class EngineDefaultsTest(unittest.TestCase):
         self.assertIn("killed", str(cm.exception))
 
 
+def finding(line=2, severity="medium", title="t"):
+    return {"severity": severity, "file": "src/export.ts", "line": line, "title": title,
+            "scenario": "An empty invoice list makes the export write a header-only file and report success.",
+            "fix": "return 204"}
+
+
+class RiskTest(unittest.TestCase):
+    def test_high_risk_escalates_unless_flags_given(self):
+        hi = {"risk": {"level": "high", "why": ["migration: a.sql"]}}
+        self.assertEqual(review.pick_model("codex", hi), ("gpt-6.1-sol", "medium"))
+        self.assertEqual(review.pick_model("claude", hi), ("opus", None))
+        self.assertEqual(review.pick_model("codex", {}), ("gpt-6.1-sol", "low"))
+        self.assertEqual(review.pick_model("codex", hi, effort="low"), ("gpt-6.1-sol", "low"))
+        self.assertEqual(review.pick_model("claude", hi, model="sonnet"), ("sonnet", None))
+
+    def test_risk_in_prompt(self):
+        with tempfile.TemporaryDirectory() as d:
+            os.environ["PR_GATE_HOME"] = d
+            try:
+                _, ctx = make_ctx(d)
+                ctx["risk"] = {"level": "high", "why": ["auth: src/auth/x.ts"]}
+                text = review.build_prompt(ctx)
+            finally:
+                del os.environ["PR_GATE_HOME"]
+        self.assertIn("High-risk PR. Touches: auth: src/auth/x.ts", text)
+
+
+class BothTest(unittest.TestCase):
+    def run_main(self, d, outputs, extra_ctx=None):
+        def fake_run(engine, model, prompt, cwd, effort=None, timeout_s=None):
+            return outputs[engine]
+
+        ctx_file, ctx = make_ctx(d, ci="pass")
+        if extra_ctx:
+            ctx_file.write_text(json.dumps(dict(ctx, **extra_ctx)), encoding="utf-8")
+        orig = review.lean_run.run
+        review.lean_run.run = fake_run
+        os.environ["PR_GATE_HOME"] = d
+        try:
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = review.main([str(ctx_file), "--engine", "both"])
+        finally:
+            review.lean_run.run = orig
+            del os.environ["PR_GATE_HOME"]
+        return rc, json.loads(buf.getvalue())
+
+    def test_merges_and_drops_cross_engine_duplicate(self):
+        codex = json.dumps({"summary": "s", "findings": [finding(2, "medium", "empty list")]})
+        claude = json.dumps({"summary": "longer summary", "findings": [
+            finding(3, "high", "header-only export"), finding(1, "low", "other")]})
+        with tempfile.TemporaryDirectory() as d:
+            rc, out = self.run_main(d, {"codex": (0, codex), "claude": (0, claude)},
+                                    {"risk": {"level": "high", "why": ["payment: x"]}})
+        self.assertEqual(rc, 0)
+        # line 2 (codex) and line 3 (claude) are one issue: the high one stays
+        self.assertEqual([(k["line"], k["severity"], k["engine"]) for k in out["kept"]],
+                         [(3, "high", "claude"), (1, "low", "claude")])  # same-engine neighbour stays
+        self.assertEqual(out["dropped"][0]["reason"], "duplicate")
+        self.assertEqual(out["summary"], "longer summary")
+        self.assertEqual(out["escalated"], ["payment: x"])
+
+    def test_same_engine_neighbours_both_kept(self):
+        codex = json.dumps({"summary": "s", "findings": [finding(1, "medium", "a"), finding(2, "medium", "b")]})
+        with tempfile.TemporaryDirectory() as d:
+            rc, out = self.run_main(d, {"codex": (0, codex), "claude": (1, "")})
+        self.assertEqual(len(out["kept"]), 2)
+        self.assertIn("claude", out["partial"])
+
+    def test_both_fail_is_exit_3(self):
+        with tempfile.TemporaryDirectory() as d:
+            rc, out = self.run_main(d, {"codex": (3, ""), "claude": (1, "")})
+        self.assertEqual(rc, 3)
+        self.assertIn("both engines failed", out["error"])
+
+
 class RawGateTest(unittest.TestCase):
     def test_raw_output_is_gated(self):
         with tempfile.TemporaryDirectory() as d:

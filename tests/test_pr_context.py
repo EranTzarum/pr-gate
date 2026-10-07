@@ -133,6 +133,22 @@ class DocsTest(unittest.TestCase):
         self.assertEqual([r.split(":")[1] for r in rules], ["3", "4"])  # the folder note is not a merge rule
 
 
+class RiskTest(unittest.TestCase):
+    def test_categories(self):
+        cases = {"supabase/migrations/0007_add_col.sql": "migration", "db/schema.sql": "migration",
+                 "src/auth/session.ts": "auth", "policies/rls_orders.sql": "auth",
+                 ".github/workflows/deploy.yml": "workflow", "src/billing/charge.py": "payment"}
+        for path, cat in cases.items():
+            r = pr_context.risk([path])
+            self.assertEqual(r["level"], "high", path)
+            self.assertIn(f"{cat}: {path}", r["why"])
+
+    def test_normal_and_cap(self):
+        self.assertEqual(pr_context.risk(["src/export.ts", "README.md", "docs/author.md"]),
+                         {"level": "normal", "why": []})
+        self.assertEqual(len(pr_context.risk([f"m/migrations/{i}.sql" for i in range(9)])["why"]), 6)
+
+
 class GatherTest(unittest.TestCase):
     """gather() end to end with gh/git mocked: shape of the context JSON."""
 
@@ -175,6 +191,7 @@ class GatherTest(unittest.TestCase):
         self.assertEqual(ctx["base_ci"], {"CI": {"conclusion": "failure", "sha": "abcdef12", "at": "t"}})
         self.assertEqual(ctx["behind_base"], 3)
         self.assertEqual(ctx["merge_rules"], [])
+        self.assertEqual(ctx["risk"], {"level": "normal", "why": []})
 
 
 if __name__ == "__main__":
