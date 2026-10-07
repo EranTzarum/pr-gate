@@ -128,9 +128,11 @@ class DocsTest(unittest.TestCase):
             (root / "CLAUDE.md").write_text(
                 "# Repo\n\nIf your session did not start here you are READ-ONLY.\n"
                 "- No commits, merges, branches\nOther text\n"
-                "- `../references/` is **read-only**. Never modify it.\n", encoding="utf-8")
+                "- `../references/` is **read-only**. Never modify it.\n"
+                "- `review.py`: runs a read-only engine or gates a subagent's output.\n", encoding="utf-8")
             rules = pr_context.merge_rules(root, ["CLAUDE.md"])
-        self.assertEqual([r.split(":")[1] for r in rules], ["3", "4"])  # the folder note is not a merge rule
+        # neither the folder note nor "read-only ... subagent" (live run 6) is a merge rule
+        self.assertEqual([r.split(":")[1] for r in rules], ["3", "4"])
 
 
 class RiskTest(unittest.TestCase):

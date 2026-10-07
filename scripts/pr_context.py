@@ -33,7 +33,7 @@ FAILURE_LINE = re.compile(r"##\[error\]|\bFAIL(ED)?\b|\bERROR\b|Error:|Traceback
                           r"error TS\d+|\bfailed\b|✕|panicked", re.I)
 # Rules about who may merge or write, not "folder X is read-only" notes.
 MERGE_RULE = re.compile(r"no (commits, )?merges|never merge|do not merge|don't merge|"
-                        r"(session|agent|repositor).{0,80}read-only|read-only.{0,80}(session|agent)", re.I)
+                        r"\b(session|agent|repositor).{0,80}read-only|read-only.{0,80}\b(session|agent)", re.I)
 LOG_CONTEXT_BEFORE, LOG_CONTEXT_AFTER, LOG_MAX_HITS = 12, 4, 4
 LOG_MAX_CHARS = 20000
 ARTIFACT_MAX_BYTES = 2_000_000
