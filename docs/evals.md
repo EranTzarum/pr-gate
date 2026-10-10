@@ -150,3 +150,33 @@ The run went from start to merged in about 15 minutes (07:39 to 07:54 UTC):
   - Repos whose rules forbid this session from merging: send the pinned merge command to the owner session.
   - Drafts: never offer `merge`.
   - The green report gets a "Note" line.
+
+## Live run 6: 2026-10-07 to 2026-10-10, risk escalation, `--engine both`, the inbox mod
+
+**Setup:** throwaway PR #2 on this repo, "Add partial refund helper" in an `evals/billing/` path (closed without merging, branch deleted). Planted: **A** a refund can exceed the charge (high), **B** `to_cents` truncates float error, `"0.29"` -> 28 (medium), **C** an unused `MAX_REFUNDS` (low). No app session owned it; this session played the owner.
+
+| Round | Head | CI | Engine | Time | Kept | Action |
+|---|---|---|---|---|---|---|
+| 1 | `8efcda88` | pass | `subagent` (first live use) | 33 s | A high, B high, C medium, plus a real low (tests only import from their own folder) | send-fix via the inbox |
+| 2 | `c6b6cdd5` | pass | `both`: codex `gpt-6.1-sol` medium + claude `opus` (auto-escalated: `payment`) | 82 s together | none; both confirmed every round-1 fix; codex ran commands (23 KB of events) | green |
+| 3 | same | | `cursor` | | not run: see below | |
+
+**Worked:**
+- `risk` flagged the PR (`payment: evals/billing/refund.py`) and `review.py` raised both engines without flags; the result carried `escalated`.
+- `--engine both` merged two real answers into one round.
+- The `subagent` engine: `--prompt-only`, one Agent call, `--raw` gate. All findings verified, none dropped.
+
+**The inbox mod, and why it first did nothing:**
+- Round 1's fix request sat in `~/.pr-gate/inbox/` for three days, untaken. Two causes:
+  - it polled only when `session.start` said `isInteractive`, and a desktop-app session can start without a terminal;
+  - it asked `gh pr view` in the session's cwd, but sessions here open in a parent folder and work in `<repo>/`.
+- Fixed: it polls always and delivers only while a surface is attached (a `-p` run has none). `handoff.py` writes a `repo/pr/branch` header line. The mod matches the branch with local git in its cwd, or in a repo folder under its cwd that the session's own transcript shows it working in (so a manager session in the same parent folder does not take it).
+- Re-sent, it arrived about a minute after the turn ended, as a new turn in the owner session ("The pr-gate-inbox plugin sent a message ..."). The owner fixed, pushed, and round 2 reviewed the new head. **First hand-back with no app `send_message`.**
+- Mods API notes, measured: `prompt.submit` is refused inside a `command.run` hook (it would wait on the turn the hook holds), so `/pr-gate-inbox` schedules the delivery with `clock.after(0)`; `claude plugin validate` refuses a `$` passed to a function that is not declared at the top of the file; the engine hands fs hooks native absolute paths (`C:\h\inbox`).
+
+**Found and fixed in pr-gate during the run:**
+- `merge_rules` read a layout line ("a read-only engine ... a subagent's output") as a merge rule: "subagent" contains "agent". Word boundaries now, test added.
+- **`agent` is not Cursor's any more.** Grok Build installs its own `agent.exe` earlier on PATH; the round-3 cursor review launched Grok with Cursor's flags and returned in 4 s with no JSON. `lean_run.py` now calls `cursor-agent`, the alias Cursor ships for this (the factory hit the same on 2026-10-08, its invariant 12). Test added.
+- With the right binary, cursor answered in 16 s: `Authentication required`. The CLI is logged out on this PC; cursor stays unproven until `cursor-agent login`. `review.py` now shows the engine's first output lines when there is no findings JSON, so a login error is visible instead of "no findings JSON".
+
+**Not exercised:** a Codex-hosted run (the inbox path from a host with no `send_message` at all), and cursor as a reviewer.

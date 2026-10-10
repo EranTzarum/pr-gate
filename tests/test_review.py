@@ -158,6 +158,25 @@ class BothTest(unittest.TestCase):
         self.assertEqual(len(out["kept"]), 2)
         self.assertIn("claude", out["partial"])
 
+    def test_no_json_shows_engine_output(self):
+        def fake_run(engine, model, prompt, cwd, effort=None, timeout_s=None):
+            return 1, "Error: Authentication required. Please run 'agent login' first."
+
+        with tempfile.TemporaryDirectory() as d:
+            ctx_file, _ = make_ctx(d, ci="pass")
+            orig = review.lean_run.run
+            review.lean_run.run = fake_run
+            os.environ["PR_GATE_HOME"] = d
+            try:
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = review.main([str(ctx_file), "--engine", "cursor"])
+            finally:
+                review.lean_run.run = orig
+                del os.environ["PR_GATE_HOME"]
+        self.assertEqual(rc, 2)
+        self.assertIn("Authentication required", json.loads(buf.getvalue())["engine_output"])
+
     def test_both_fail_is_exit_3(self):
         with tempfile.TemporaryDirectory() as d:
             rc, out = self.run_main(d, {"codex": (3, ""), "claude": (1, "")})

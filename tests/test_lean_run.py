@@ -91,6 +91,8 @@ class ClaudeCursorTest(FakeProfile):
     def test_cursor_read_only_and_refuses_grants(self):
         argv, _ = lean_run.build("cursor", "composer-2.5", Path("."), self.run_dir)
         self.assertEqual(argv[argv.index("--mode") + 1], "ask")
+        # live run 6: a bare `agent` resolved to another vendor's CLI first on PATH
+        self.assertTrue(any(Path(a).name.lower().startswith("cursor-agent") for a in argv), argv)
         with self.assertRaises(RuntimeError):
             lean_run.build("cursor", "composer-2.5", Path("."), self.run_dir, mcp=["x"])
 

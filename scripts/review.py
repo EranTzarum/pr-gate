@@ -157,6 +157,8 @@ def main(argv=None):
         rc = findings.main(["check", "--raw", str(raw), "--root", ctx["checkout"], "--ci", ctx["ci"],
                             "--repo", ctx["repo"], "--pr", str(ctx["pr"]), "--sha", ctx["head_sha"]])
     out = json.loads(buf.getvalue())
+    if rc == 2:  # no findings JSON: show what the engine said (a login error reads as nothing otherwise)
+        extra["engine_output"] = raw.read_text(encoding="utf-8", errors="replace").strip()[:400]
     print(json.dumps(dict(out, **extra), indent=2))
     return rc
 

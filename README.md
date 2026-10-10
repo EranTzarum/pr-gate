@@ -81,7 +81,7 @@ py -3 -m unittest discover tests
 claude plugin test mod
 ```
 
-Expected: `Ran 71 tests ... OK` and `4 pass`. No network calls; `gh` is mocked.
+Expected: `Ran 72 tests ... OK` and `4 pass`. No network calls; `gh` is mocked.
 
 ---
 

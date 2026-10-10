@@ -126,7 +126,8 @@ def build(engine, model, cwd, run_dir, effort=None, write=False, mcp=(), skills=
     elif engine == "cursor":
         if mcp or skills:
             raise RuntimeError("cursor runs on the real profile for now; grants are not isolated")
-        argv = [_exe("agent"), "-p", "--model", model, "--trust", "--output-format", "json",
+        # `cursor-agent`, not `agent`: other CLIs (Grok's) also install an `agent` that can come first on PATH.
+        argv = [_exe("cursor-agent"), "-p", "--model", model, "--trust", "--output-format", "json",
                 "--workspace", str(cwd)] + ([] if write else ["--mode", "ask"])
     else:
         raise ValueError(engine)
