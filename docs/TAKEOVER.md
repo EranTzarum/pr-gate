@@ -38,9 +38,10 @@ Read this first, then `CLAUDE.md`, `SKILL.md`, and `docs/evals.md` (the evidence
 2. **A Codex-hosted run has never happened.** `/pr-gate` from a Codex session on a throwaway PR:
    proves `handoff.py` + PR comment from a host with no `send_message`, and the inbox mod picking it
    up in a Claude owner session.
-3. **The inbox mod loads only where it is enabled.** Today: this session's dev-mods folder. For
-   real use the user adds `pr-gate/mod` to `CLAUDE_CODE_PLUGIN_DIRS` (README). Mods are early
-   access: re-run `claude plugin validate mod` after a Claude Code update.
+3. **The inbox mod is installed (2026-10-10)** as a skills-dir plugin: junction
+   `~/.claude/skills/pr-gate-inbox` -> `pr-gate/mod` (open sessions: `/reload-plugins`), plus the
+   user's `CLAUDE_CODE_PLUGIN_DIRS` (wins for new sessions; `claude plugin list` shows the other copy
+   skipped, never both). Mods are early access: re-run `claude plugin validate mod` after a Claude Code update.
 4. **`lean_run.py` lives in this repo.** Move it if a third consumer appears.
 5. **`--all-open`** runs PRs one at a time. Fine until there are many open PRs.
 

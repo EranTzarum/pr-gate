@@ -72,7 +72,13 @@ From the Claude desktop app, pr-gate messages the owner session directly. From a
 claude --plugin-dir "$HOME/.claude/skills/pr-gate/mod"
 ```
 
-Or add the folder to `CLAUDE_CODE_PLUGIN_DIRS` so every session loads it. Headless runs (`claude -p`) never pick anything up. The mod API is early access; the PR comment keeps working without it.
+Or load it in every session, open ones included: link it into the skills folder, then type `/reload-plugins` in each open session (new sessions load it by themselves).
+
+```bash
+cmd /c mklink /J "%USERPROFILE%\.claude\skills\pr-gate-inbox" "%USERPROFILE%\.claude\skills\pr-gate\mod"
+```
+
+`CLAUDE_CODE_PLUGIN_DIRS` works too, for new sessions only; with both, that copy wins and the linked one is skipped, so it never loads twice. Headless runs (`claude -p`) never pick anything up. The mod API is early access; the PR comment keeps working without it.
 
 ### Verify
 
