@@ -29,19 +29,22 @@ class HandoffTest(unittest.TestCase):
     def test_send_names_file_like_state_and_redacts(self):
         body = Path(self.tmp.name) / "fix.md"
         body.write_text("pr-gate round 1/3\ntoken=ghp_" + "q" * 36 + "\n", encoding="utf-8")
-        rc, out = self.cli("send", "o/my.repo", "7", "--sha", "abcdef1234", "--body-file", str(body))
+        rc, out = self.cli("send", "o/my.repo", "7", "--sha", "abcdef1234", "--branch", "feat/x",
+                           "--body-file", str(body))
         p = Path(out["inbox_file"])
         self.assertEqual(rc, 0)
         self.assertEqual(p.name, "o__my_repo__7.abcdef12.md")  # same key as state/
-        self.assertNotIn("q" * 36, p.read_text(encoding="utf-8"))
+        text = p.read_text(encoding="utf-8")
+        self.assertTrue(text.startswith("<!-- pr-gate repo=o/my.repo pr=7 branch=feat/x -->\n"))  # the mod's HEADER
+        self.assertNotIn("q" * 36, text)
         self.assertEqual(list(p.parent.glob("*.tmp")), [])
 
     def test_taken_and_resend_clears_it(self):
-        p = handoff.send("o/r", 7, "abcdef1234", "fix it")
+        p = handoff.send("o/r", 7, "abcdef1234", "b", "fix it")
         self.assertEqual(self.cli("taken", "o/r", "7", "--sha", "abcdef1234")[1], {"taken": False})
         Path(str(p) + ".taken").write_text("", encoding="utf-8")  # what the mod writes
         self.assertEqual(self.cli("taken", "o/r", "7", "--sha", "abcdef1234")[1], {"taken": True})
-        handoff.send("o/r", 7, "abcdef1234", "fix it again")
+        handoff.send("o/r", 7, "abcdef1234", "b", "fix it again")
         self.assertFalse(handoff.taken("o/r", 7, "abcdef1234"))
 
     def test_rejects_bad_input(self):
@@ -49,6 +52,8 @@ class HandoffTest(unittest.TestCase):
             handoff.main(["send", "o/r;rm", "7", "--sha", "abcdef12", "--body-file", "x"])
         with self.assertRaises(SystemExit):
             handoff.main(["taken", "o/r", "7", "--sha", "../../x"])
+        with self.assertRaises(SystemExit):
+            handoff.main(["send", "o/r", "7", "--sha", "abcdef12", "--branch", "a -->x", "--body-file", "x"])
 
 
 if __name__ == "__main__":

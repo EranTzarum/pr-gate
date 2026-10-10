@@ -5,43 +5,62 @@ import type { On } from 'claude-code'
 import { keyOf } from './register'
 
 const HOME = '/h'
+const REQ = `${HOME}/inbox/o__my_repo__7.abcdef12.md`
+const HEADER = '<!-- pr-gate repo=o/my.repo pr=7 branch=feat/refund -->\n'
 // The test engine types the full CommandRunInput; the engine fills the rest, as for a typed command.
 const runCommand = ($: Engine) =>
   $.command.run({ command: 'pr-gate-inbox' } as Parameters<Engine['command']['run']>[0])
 // The engine hands fs hooks absolute, native paths (C:\h\inbox on Windows).
 const norm = (p: string) => p.replace(/^[A-Za-z]:/, '').replace(/\\/g, '/')
 
-// A file system in memory under HOME, plus gh answering PR 7 of o/my.repo.
-const world = (on: On, files: Record<string, string>, ghOk = true) => {
+type World = {
+  cwd: string
+  files: Record<string, string>
+  dirs?: string[] // folders under cwd
+  repos: Record<string, { branch: string; origin: string }> // git checkouts, by path
+  surfaces?: string[]
+  used?: Record<string, unknown>[] // tool inputs in the session's transcript
+}
+
+const world = (on: On, w: World) => {
   mock.env(on, { PR_GATE_HOME: HOME })
   const clock = mock.clock(on)
-  on('process.run', () => ({
-    value: {
-      exitCode: ghOk ? 0 : 1,
-      stdout: ghOk ? '{"number":7,"url":"https://github.com/o/my.repo/pull/7"}' : '',
-      stderr: ghOk ? '' : 'no pull requests found',
-      isStdoutTruncated: false,
-      isStderrTruncated: false,
-    },
-  }))
-  on('fs.list', ($, e) => {
-    const dir = `${norm(e.path)}/`
+  on('session.cwd', () => ({ value: w.cwd }))
+  on('session.surfaces', () => ({ value: (w.surfaces ?? ['desktop']) as never }))
+  on('process.run', ($, e) => {
+    const [, , dir = '', ...args] = e.argv
+    const repo = w.repos[norm(dir)]
+    const out = !repo ? '' : args[0] === 'branch' ? repo.branch : repo.origin
     return {
-      value: Object.keys(files)
-        .filter(p => p.startsWith(dir))
-        .map(p => ({ name: p.slice(dir.length), kind: 'file' as const, size: 1, mtimeMs: 1, isLink: false })),
+      value: { exitCode: repo ? 0 : 128, stdout: `${out}\n`, stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
     }
   })
-  on('fs.exists', ($, e) => ({ value: norm(e.path) in files }))
+  on('fs.list', ($, e) => {
+    const dir = norm(e.path)
+    if (dir === w.cwd)
+      return { value: (w.dirs ?? []).map(name => ({ name, kind: 'dir' as const, size: 0, mtimeMs: 0, isLink: false })) }
+    return {
+      value: Object.keys(w.files)
+        .filter(p => p.startsWith(`${dir}/`))
+        .map(p => ({ name: p.slice(dir.length + 1), kind: 'file' as const, size: 1, mtimeMs: 1, isLink: false })),
+    }
+  })
+  on('fs.exists', ($, e) => {
+    const p = norm(e.path)
+    return { value: p in w.files || (p.endsWith('/.git') && p.slice(0, -5) in w.repos) }
+  })
   on('fs.read', ($, e) => {
     const p = norm(e.path)
-    if (!(p in files)) throw new Error(`ENOENT ${p}`)
-    return { value: files[p] ?? '' }
+    if (!(p in w.files)) throw new Error(`ENOENT ${p}`)
+    return { value: w.files[p] ?? '' }
   })
   on('fs.write', ($, e) => {
-    files[norm(e.path)] = e.text
+    w.files[norm(e.path)] = e.text
     return { value: undefined }
   })
+  on('session.messages', () => ({
+    value: [{ role: 'assistant', text: '', toolUses: (w.used ?? []).map((input, i) => ({ tool_use_id: `t${i}`, tool: 'Read', input })) }] as never,
+  }))
   const submitted: string[] = []
   const status: (string | undefined)[] = []
   on('prompt.submit', ($, e) => {
@@ -60,33 +79,54 @@ test('key matches scripts/findings.py key()', () => {
   expect(keyOf('o/my.repo', 7)).toBe('o__my_repo__7')
 })
 
-test('delivers only this PR\'s untaken requests, once', async ($, on) => {
+test('a session whose cwd is the branch gets the request, once', async ($, on) => {
   const files: Record<string, string> = {
-    [`${HOME}/inbox/o__my_repo__7.abcdef12.md`]: 'Fix src/a.ts:3',
-    [`${HOME}/inbox/o__my_repo__7.11111111.md`]: 'old one',
-    [`${HOME}/inbox/o__my_repo__7.11111111.md.taken`]: '1',
-    [`${HOME}/inbox/o__my_repo__8.abcdef12.md`]: 'another PR',
-    [`${HOME}/state/o__my_repo__7.json`]: '{"rounds":[{"verdict":"fix"},{"verdict":"fix"}]}',
+    [REQ]: `${HEADER}Fix src/a.ts:3`,
+    [`${HOME}/inbox/o__my_repo__8.abcdef12.md`]: '<!-- pr-gate repo=o/my.repo pr=8 branch=feat/other -->\nx',
+    [`${HOME}/inbox/stray.md`]: 'no header',
+    [`${HOME}/state/o__my_repo__7.json`]: '{"rounds":[{"verdict":"fix"}]}',
   }
-  const { submitted, status, clock } = world(on, files)
-
-  const first = await runCommand($)
-  expect(first.text).toContain('o/my.repo#7: checking now')
+  const { submitted, status, clock } = world(on, {
+    cwd: '/w/my.repo', files,
+    repos: { '/w/my.repo': { branch: 'feat/refund', origin: 'https://github.com/o/my.repo.git' } },
+  })
+  await runCommand($)
   await clock.settle()
   expect(submitted.length).toBe(1)
   expect(submitted[0]).toContain('o/my.repo#7')
   expect(submitted[0]).toContain('Fix src/a.ts:3')
-  expect(`${HOME}/inbox/o__my_repo__7.abcdef12.md.taken` in files).toBe(true)
-  expect(status).toContain('pr-gate #7: round 2/3, fix')
+  expect(`${REQ}.taken` in files).toBe(true)
 
   await runCommand($)
   await clock.settle()
   expect(submitted.length).toBe(1) // taken: never twice
+  expect(status).toContain('pr-gate #7: round 1/3, fix')
 })
 
-test('a branch with no PR delivers nothing', async ($, on) => {
-  const { submitted } = world(on, { [`${HOME}/inbox/o__my_repo__7.abcdef12.md`]: 'x' }, false)
-  const out = await runCommand($)
-  expect(out.text).toContain('no open PR')
+test('an umbrella session gets it only after working in that repo folder', async ($, on) => {
+  const files: Record<string, string> = { [REQ]: `${HEADER}Fix it` }
+  const used: Record<string, unknown>[] = [{ file_path: 'C:\\w\\other\\x.ts' }]
+  const { submitted, clock } = world(on, {
+    cwd: '/w', files, dirs: ['my.repo', 'other'], used,
+    repos: { '/w/my.repo': { branch: 'feat/refund', origin: 'ssh://github.com/o/my.repo.git' } },
+  })
+  await runCommand($)
+  await clock.settle()
+  expect(submitted.length).toBe(0) // never touched my.repo: a manager session must not take it
+
+  used.push({ command: 'git -C my.repo status' })
+  await runCommand($)
+  await clock.settle()
+  expect(submitted.length).toBe(1)
+})
+
+test('wrong branch, or no surface (a -p run), delivers nothing', async ($, on) => {
+  const files: Record<string, string> = { [REQ]: `${HEADER}x` }
+  const { submitted, clock } = world(on, {
+    cwd: '/w/my.repo', files, surfaces: [],
+    repos: { '/w/my.repo': { branch: 'feat/refund', origin: 'https://github.com/o/my.repo' } },
+  })
+  await runCommand($)
+  await clock.settle()
   expect(submitted.length).toBe(0)
 })

@@ -176,7 +176,7 @@ Write the fix request to a file first (`<work>/fix-<sha8>.md`), then:
    `ccd_session_mgmt` `send_message`. `delivered`/`queued` → done.
 2. **Otherwise (any host, no match, or an error): the inbox, plus a PR comment.**
    ```bash
-   py -3 <skill>/scripts/handoff.py send <owner/repo> <N> --sha <head_sha> --body-file <file>
+   py -3 <skill>/scripts/handoff.py send <owner/repo> <N> --sha <head_sha> --branch <head> --body-file <file>
    gh pr comment <N> -R <repo> --body-file <file>
    ```
    The inbox mod (`mod/`, see README) in the owner's Claude Code session picks
