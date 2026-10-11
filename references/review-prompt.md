@@ -49,6 +49,15 @@ Skip style, naming, formatting and "consider refactoring".
 - Give a concrete failure scenario: who does what, with what input, and what
   goes wrong. "Might be an issue" is not a scenario. Drop speculation.
 - Give the minimal fix.
+- **One root cause, one finding.** If several lines fail for the same reason
+  (for example "missing data silently becomes zero"), report it once, at the
+  worst line. Name the pattern in the title, list the other places you found
+  in the scenario, and write the fix for the pattern, not for one line. Before
+  reporting any finding, search the PR's changed files for the same mistake.
+  A fix that patches one instance leaves the next round to find the sibling;
+  that wastes a round.
+- In a later round, if a new finding has the same root cause as an earlier
+  one, say so in its title ("still: ...") and keep that earlier severity.
 - Severity:
   - `blocker`: data loss, security hole, or a broken deploy.
   - `high`: wrong behaviour on a main path.

@@ -180,3 +180,10 @@ The run went from start to merged in about 15 minutes (07:39 to 07:54 UTC):
 - With the right binary, cursor answered in 16 s: `Authentication required`. The CLI is logged out on this PC; cursor stays unproven until `cursor-agent login`. `review.py` now shows the engine's first output lines when there is no findings JSON, so a login error is visible instead of "no findings JSON".
 
 **Not exercised:** a Codex-hosted run (the inbox path from a host with no `send_message` at all), and cursor as a reviewer.
+
+## Runs 7 and 8: 2026-10-10/11, two PRs in an orchestrator repo
+
+- **PR A (28 files, desktop app skeleton + CI):** risk `workflow` raised codex to medium automatically. Round 1 found a **blocker**: the release workflow's asset check would have blocked every tagged release. The session that wrote the PR missed it after its own full-branch review. Fixed by the owner session (also the gate), round 2 green with one low. Merged.
+- **PR B (4 files, a metrics script):** three rounds, one new medium each, then escalation. All three were one root cause, "missing data silently becomes zero", found one place at a time: unreadable ledgers dropped, missing usage reported as zero, then the same in discarded attempts. The owner fixed each line it was shown, not the pattern, so the loop never converged.
+- **Fix:** the reviewer prompt now asks for one finding per root cause, worded as a pattern, with the other places listed and the changed files searched for siblings first. The fix request tells the owner to fix the pattern everywhere. A later finding with the same cause is titled "still: ..." and keeps its earlier severity.
+- **Not exercised in real use yet:** the inbox mod (the gate session owned both PRs), `--engine both`, cursor.

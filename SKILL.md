@@ -194,6 +194,8 @@ Then wait for a push as in step 4.
 pr-gate round <r>/3 for <repo>#<N> @ <sha8>: changes needed before merge.
 CI: <pass|FAILED: job names|no CI>.
 Fix these, run the repo's gates, push to <head branch>. Do not merge.
+Fix each one as a pattern, not a line: search the whole change for the same
+mistake and fix every instance. A one-line patch sends the sibling to the next round.
 1. [<severity>] <file>:<line> — <title>
    Scenario: <scenario>
    Fix: <fix>

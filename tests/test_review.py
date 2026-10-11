@@ -38,6 +38,8 @@ class PromptTest(unittest.TestCase):
                 del os.environ["PR_GATE_HOME"]
         self.assertNotIn("{{", text)
         self.assertIn("none (first round)", text)
+        # live: factory#37 burned 3 rounds on siblings of one root cause
+        self.assertIn("One root cause, one finding", text)
         for s in ("Add export", "- CLAUDE.md", "CI FAILED", "TypeError at export.ts:2", "+const x = 1"):
             self.assertIn(s, text)
 
