@@ -42,7 +42,7 @@ py -3 -m unittest discover tests
 claude plugin validate mod && claude plugin test mod   # when mod/ changed
 ```
 
-## Other hosts (was AGENTS.md)
+## Codex and Cursor
 
 On Codex and Cursor there is no app
 `send_message`, so fix requests go to `~/.pr-gate/inbox/` (`scripts/handoff.py`,
