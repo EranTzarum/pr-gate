@@ -194,7 +194,7 @@ Write the fix request to a file first (`<work>/fix-<sha8>.md`), then:
    py -3 <skill>/scripts/handoff.py send <owner/repo> <N> --sha <head_sha> --branch <head> --body-file <file>
    gh pr comment <N> -R <repo> --body-file <file>
    ```
-   The inbox mod (`mod/`, see README) in the owner's Claude Code session picks
+   The inbox mod (`mod/`, see docs/inbox-mod.md) in the owner's Claude Code session picks
    the file up for the PR its branch has, and starts a turn with it once that
    session is idle. The comment is the record and reaches an owner without the
    mod. `handoff.py taken <owner/repo> <N> --sha <head_sha>` says whether a
