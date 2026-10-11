@@ -1,7 +1,7 @@
 # pr-gate: takeover
 
 For the "pr-gate skill" session: opened in the umbrella folder, working only inside `pr-gate/`.
-Read this first, then `CLAUDE.md`, `SKILL.md`, and `docs/evals.md` (the evidence for every rule).
+Read this first, then `AGENTS.md`, `SKILL.md`, and `docs/evals.md` (the evidence for every rule).
 
 ## State (2026-10-10)
 
@@ -75,7 +75,7 @@ Read this first, then `CLAUDE.md`, `SKILL.md`, and `docs/evals.md` (the evidence
 
 ## Boundaries
 
-- **This session owns pr-gate only.** The umbrella's `CLAUDE.md`, `README.md` and `docs/` belong to
+- **This session owns pr-gate only.** The umbrella's `AGENTS.md`, `README.md` and `docs/` belong to
   the manager session. Ask it, or the user, to update the pr-gate rows there after a big change.
 - **Never merge in a repo whose rules forbid outside sessions from merging.** `merge_rules` finds
   those rules; the skill routes the merge to the owner session.

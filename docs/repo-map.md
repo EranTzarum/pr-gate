@@ -14,6 +14,6 @@
 | `mod/` | The inbox mod: delivers fix requests to the session whose branch has the PR |
 | `scripts/wait.py` | Waits for CI or a new push, as a process rather than a polling model |
 | `scripts/redact.py` | Secret masking |
-| `CLAUDE.md`, `AGENTS.md` | Rules for working on this repo |
+| `AGENTS.md` | Rules for working on this repo (the only instruction file) |
 
 Back to the [README](../README.md).
