@@ -41,7 +41,12 @@ skip drafts, run the loop for each PR **one after another**.
 
 **Reviewer choice.** Use `--reviewer` if given. Otherwise ask the user once,
 in one line, offering the default: the *other* model from the host (Claude host
-→ `codex`; Codex host → `claude`; Cursor host → `claude`). For a high-risk PR,
+→ `codex`; Codex host → `claude`; Cursor host → `claude`), if its CLI is
+installed and logged in (`codex --version`, `claude --version`,
+`cursor-agent --version`). **Only one tool installed** → the same tool in a
+fresh read-only run: Claude host → `subagent` (or `claude`); Codex host →
+`codex`; Cursor host → `cursor`. A fresh context still catches what the writer
+missed; a second model family is a bonus, not a requirement. For a high-risk PR,
 offer `both` first (codex and claude on the same prompt, findings merged; a
 cross-engine duplicate within 3 lines is kept once, at the higher severity; if
 one engine fails the result says `partial` and the round still counts). If
@@ -49,9 +54,10 @@ the chosen engine fails (missing CLI, quota, error exit), say so and offer the
 next one; don't silently switch. `subagent` = an Agent-tool subagent in this
 session (Claude Code only): fresh context, same model family.
 
-`cursor` is opt-in only: never the default, never offered first. It takes
-45–110 s to start and always carries the Cursor account's plugins and MCP tools
-(mail, calendar, deploy), whatever the sandbox. Use it only when the user asks.
+`cursor` is opt-in when another engine exists: never offered first then. It
+takes 45–110 s to start and always carries the Cursor account's plugins and MCP
+tools (mail, calendar, deploy), whatever the sandbox. On a Cursor-only setup it
+is the default; say once that it carries those tools.
 
 ## The loop (one PR)
 
@@ -236,7 +242,11 @@ Options: <e.g. take over the branch, split the PR, accept the risk>
 - **Claude Code (desktop)**: everything above.
 - **Codex / Cursor / CLI without the app tools**: no `send_message`, so owner
   routing goes straight to step 2 (inbox + PR comment); run `wait.py` as a
-  normal blocking command. Default reviewer from Codex is `claude`.
+  normal blocking command. Default reviewer from Codex is `claude`, or `codex`
+  when Claude isn't installed.
+- **Paths:** `<skill>` is wherever this folder lives (`~/.claude/skills/pr-gate`,
+  `~/.codex/skills/pr-gate`, `~/.cursor/skills/pr-gate`). Python is `py -3` on
+  Windows, `python3` elsewhere.
 
 ## Automation
 

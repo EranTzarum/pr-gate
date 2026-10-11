@@ -7,9 +7,9 @@
 **Merge on a reply, not on a read.**
 A skill that reviews each pull request, sends the fixes back to the session that wrote it, and asks you only one thing at the end: `merge`?
 
-[![Claude Code](https://img.shields.io/badge/Claude%20Code-skill-16A34A)](#quick-start)
+[![Works with](https://img.shields.io/badge/works%20with-Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20Cursor-16A34A)](#install)
 [![Reviewers](https://img.shields.io/badge/reviewers-codex%20%C2%B7%20claude%20%C2%B7%20cursor-052E16)](#pick-a-reviewer)
-[![Tests](https://img.shields.io/badge/tests-61%20passing-16A34A)](#verify)
+[![Tests](https://img.shields.io/badge/tests-72%20passing-16A34A)](#install)
 [![License: MIT](https://img.shields.io/badge/license-MIT-052E16)](LICENSE)
 
 </div>
@@ -42,52 +42,63 @@ Doing this by hand means reading diffs, pasting findings into the right chat, an
 
 ---
 
-## Quick start
+## What it did in practice
 
-The skill is a folder. Claude Code loads it from `~/.claude/skills/pr-gate`.
+Measured on its first eight real pull requests (details in [docs/evals.md](docs/evals.md)):
 
-```bash
-gh repo clone EranTzarum/pr-gate
-cmd /c mklink /J "%USERPROFILE%\.claude\skills\pr-gate" "%CD%\pr-gate"
-```
+- **It catches what the writer missed.** On a 28-file PR, the session that wrote it had already reviewed its own branch. pr-gate's reviewer still found a blocker: the release workflow would have refused every future tagged release. It was fixed before merge.
+- **It's fast.** A round (fresh review of the diff, the repo's docs and the CI logs) takes 1 to 5 minutes. A two-round PR goes from open to merged in about 15 to 20 minutes, and most of that is CI.
+- **You stop being the messenger.** No more copying findings between chats or checking back after each push. You read one short report and answer one word.
+- **It costs little of your main quota.** Reviewers run lean (mid-tier model, none of your global plugins or MCP servers). With Claude as your editor and Codex as the reviewer, the review comes out of a different subscription.
 
-Then, in any Claude Code session:
+---
+
+## Install
+
+Pick the tool you use. Any one of them is enough: with a single tool, the reviewer is that same tool in a fresh, read-only run. A fresh context is what catches the writer's blind spots; a second model family is a bonus.
+
+**Needs:** [`gh`](https://cli.github.com) logged in (`gh auth login`), Python 3, `git`.
+
+**Easiest:** paste this repo's link into your agent and say *"install this skill"*. It follows [INSTALL.md](INSTALL.md).
+
+Or by hand:
+
+| You use | Run once |
+|---|---|
+| Claude Code | `git clone https://github.com/EranTzarum/pr-gate.git ~/.claude/skills/pr-gate` |
+| Codex | `git clone https://github.com/EranTzarum/pr-gate.git ~/.codex/skills/pr-gate` |
+| Cursor | `git clone https://github.com/EranTzarum/pr-gate.git ~/.cursor/skills/pr-gate` |
+
+On Windows, `~` is `%USERPROFILE%`. Using two of these tools? Clone it once and copy (or link) the folder into the others.
+
+Then, in a session inside the repo:
 
 ```text
-/pr-gate owner/repo 12 --reviewer codex
-/pr-gate owner/repo --all-open
+/pr-gate owner/repo 12
 ```
 
-Needs `gh` (logged in) and Python 3. Each reviewer needs its own CLI: `codex`, `claude` or Cursor's `agent`.
+In Codex or Cursor, say *"run pr-gate on PR 12"* if slash commands don't list skills. It asks once which reviewer to use, offering the best one you have installed.
 
-### Fix requests from any host: the inbox mod
+> [!TIP]
+> Check the install: `python3 -m unittest discover tests` inside the skill folder (`py -3` on Windows). Expected: `Ran 72 tests ... OK`. No network calls; `gh` is mocked.
 
-From the Claude desktop app, pr-gate messages the owner session directly. From anywhere else (Codex, Cursor, a plain terminal), or when no session matches, it drops the fix request in `~/.pr-gate/inbox/` and also comments on the PR. `mod/` is a Claude Code mod (a plugin of function hooks) for the sessions that write PRs:
-- every minute it asks `gh` which PR the session's branch has;
-- it starts a turn with any fix request for that PR once the session is idle;
-- it shows the PR's pr-gate round in the status line.
-`/pr-gate-inbox` checks right away.
+### Optional: the inbox mod (Claude Code only)
+
+You don't need it. Without it, fix requests reach the session that owns the PR as an app message (Claude desktop app) or as a PR comment, and the loop works the same.
+
+It helps when you run pr-gate from one tool and write code in Claude Code: the fix request then arrives in the writing session by itself. `mod/` is a Claude Code mod (function hooks that run inside a session):
+- every minute it looks in `~/.pr-gate/inbox/`, with local `git` only;
+- a request goes to the session that has the PR's branch checked out, in its folder or in a repo folder under it that it works in;
+- that session gets a new turn with the request once it's idle, and its status line shows the PR's round.
+
+`/pr-gate-inbox` checks right away. Headless runs (`claude -p`) never pick anything up.
 
 ```bash
-claude --plugin-dir "$HOME/.claude/skills/pr-gate/mod"
+# every session; open ones pick it up after /reload-plugins
+ln -s ~/.claude/skills/pr-gate/mod ~/.claude/skills/pr-gate-inbox
 ```
 
-Or load it in every session, open ones included: link it into the skills folder, then type `/reload-plugins` in each open session (new sessions load it by themselves).
-
-```bash
-cmd /c mklink /J "%USERPROFILE%\.claude\skills\pr-gate-inbox" "%USERPROFILE%\.claude\skills\pr-gate\mod"
-```
-
-`CLAUDE_CODE_PLUGIN_DIRS` works too, for new sessions only; with both, that copy wins and the linked one is skipped, so it never loads twice. Headless runs (`claude -p`) never pick anything up. The mod API is early access; the PR comment keeps working without it.
-
-### Verify
-
-```bash
-py -3 -m unittest discover tests
-claude plugin test mod
-```
-
-Expected: `Ran 72 tests ... OK` and `4 pass`. No network calls; `gh` is mocked.
+On Windows: `cmd /c mklink /J "%USERPROFILE%\.claude\skills\pr-gate-inbox" "%USERPROFILE%\.claude\skills\pr-gate\mod"`. For one session only, use `claude --plugin-dir ~/.claude/skills/pr-gate/mod`. The mod API is early access; `claude plugin test mod` checks it (`4 pass`).
 
 ---
 
@@ -146,11 +157,11 @@ Each round, the reviewer sees the earlier rounds' findings and keeps each one's 
 
 | `--reviewer` | Default model | Note |
 |---|---|---|
-| `codex` | `gpt-6.1-sol`, low effort | Default when the host is Claude |
+| `codex` | `gpt-6.1-sol`, low effort | Default when the host is Claude; also the default on Codex when Claude isn't installed |
 | `claude` | `sonnet` | Default when the host is Codex or Cursor |
 | `both` | codex and claude, findings merged | Offered for high-risk PRs; a cross-engine duplicate (same file, within 3 lines) is kept once, at the higher severity |
-| `cursor` | `composer-2.5` | Opt-in only, never the default. 45–110 s of startup, and it carries your Cursor account's plugins and MCP tools whatever the sandbox ([evals](docs/evals.md)) |
-| `subagent` | An Agent-tool subagent in the same session | Fresh context, same model family |
+| `cursor` | `composer-2.5` | Opt-in when you have another tool; the default only on a Cursor-only setup. 45–110 s of startup, and it carries your Cursor account's plugins and MCP tools whatever the sandbox ([evals](docs/evals.md)) |
+| `subagent` | An Agent-tool subagent in the same session | Fresh context, same model family; the default on a Claude-only setup |
 
 You pick the engine per run, and you can override the model with `--model` and `--effort`. If the engine fails, pr-gate tells you and offers the next one. It never switches engines silently.
 
@@ -196,6 +207,7 @@ Not enabled. [docs/automation.md](docs/automation.md) compares a scheduled local
 | Path | What |
 |---|---|
 | `SKILL.md` | The loop the host session follows |
+| `INSTALL.md` | Install steps an agent follows when you say "install this skill" |
 | `references/review-prompt.md` | The reviewer's instructions and JSON output format |
 | `scripts/pr_context.py` | PR, diff, CI, logs, docs, merge triggers → one JSON file |
 | `scripts/review.py` | Runs a read-only engine and gates its output |
