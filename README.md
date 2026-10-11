@@ -9,7 +9,7 @@ A skill that reviews each pull request, sends the fixes back to the session that
 
 [![Works with](https://img.shields.io/badge/works%20with-Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20Cursor-16A34A)](#install)
 [![Reviewers](https://img.shields.io/badge/reviewers-codex%20%C2%B7%20claude%20%C2%B7%20cursor-052E16)](#pick-a-reviewer)
-[![Tests](https://img.shields.io/badge/tests-72%20passing-16A34A)](#install)
+[![Tests](https://img.shields.io/badge/tests-74%20passing-16A34A)](#install)
 [![License: MIT](https://img.shields.io/badge/license-MIT-052E16)](LICENSE)
 
 </div>
@@ -79,8 +79,16 @@ Then, in a session inside the repo:
 
 In Codex or Cursor, say *"run pr-gate on PR 12"* if slash commands don't list skills. It asks once which reviewer to use, offering the best one you have installed.
 
+**Your reviewer, your model.** Every reviewer is a plain CLI (`codex`, `claude`, `cursor-agent`), so no plugin is needed to use a model from another tool. Tell the agent your preference once, for example *"review with Cursor on the auto model"*, and it saves it in `~/.pr-gate/config.json`:
+
+```json
+{ "reviewer": "cursor", "models": { "cursor": "auto" } }
+```
+
+Login commands, a one-line test per engine and the model list are in [references/engines.md](references/engines.md).
+
 > [!TIP]
-> Check the install: `python3 -m unittest discover tests` inside the skill folder (`py -3` on Windows). Expected: `Ran 72 tests ... OK`. No network calls; `gh` is mocked.
+> Check the install: `python3 -m unittest discover tests` inside the skill folder (`py -3` on Windows). Expected: `Ran 74 tests ... OK`. No network calls; `gh` is mocked.
 
 ### Optional: the inbox mod (Claude Code only)
 
@@ -208,6 +216,7 @@ Not enabled. [docs/automation.md](docs/automation.md) compares a scheduled local
 |---|---|
 | `SKILL.md` | The loop the host session follows |
 | `INSTALL.md` | Install steps an agent follows when you say "install this skill" |
+| `references/engines.md` | How to check, log in, test and pick a model for each reviewer CLI |
 | `references/review-prompt.md` | The reviewer's instructions and JSON output format |
 | `scripts/pr_context.py` | PR, diff, CI, logs, docs, merge triggers → one JSON file |
 | `scripts/review.py` | Runs a read-only engine and gates its output |

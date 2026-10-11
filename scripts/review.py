@@ -84,15 +84,42 @@ def run_engine(engine, ctx, prompt, out, model=None, effort=None, timeout_s=None
         raise RuntimeError(f"{engine} ({model}) exited {code} with no output")
 
 
-def pick_model(engine, ctx, model=None, effort=None):
-    """Explicit flags win; else the risk table for a high-risk PR; else the mid-tier default."""
+def load_config():
+    """The user's preferences, ~/.pr-gate/config.json (or PR_GATE_HOME). All keys optional:
+      {"reviewer": "cursor",                         default --engine
+       "models": {"cursor": "auto"},                 replaces the mid-tier default model
+       "effort": {"codex": "low"},
+       "risk_models": {"cursor": "auto"}}            replaces RISK_MODELS for a high-risk PR
+    A broken file is ignored (and said so), never fatal."""
+    p = findings.home() / "config.json"
+    if not p.exists():
+        return {}
+    try:
+        cfg = json.loads(p.read_text(encoding="utf-8-sig"))
+        return cfg if isinstance(cfg, dict) else {}
+    except ValueError:
+        print(json.dumps({"warning": f"{p} is not valid JSON; using defaults"}), file=sys.stderr)
+        return {}
+
+
+def pick_model(engine, ctx, model=None, effort=None, cfg=None):
+    """Explicit flags win; else the risk table for a high-risk PR; else the mid-tier default.
+    The user's config replaces either table's entry for an engine it names."""
+    cfg = cfg or {}
+    base = (cfg.get("models", {}).get(engine, DEFAULT_MODELS[engine][0]),
+            cfg.get("effort", {}).get(engine, DEFAULT_MODELS[engine][1]))
     if model or effort:
-        return model or DEFAULT_MODELS[engine][0], effort or DEFAULT_MODELS[engine][1]
-    table = RISK_MODELS if (ctx.get("risk") or {}).get("level") == "high" else DEFAULT_MODELS
-    return table[engine]
+        return model or base[0], effort or base[1]
+    if (ctx.get("risk") or {}).get("level") == "high":
+        own = cfg.get("risk_models", {}).get(engine)
+        if own:
+            return own, base[1]
+        # no stronger tier for this engine: keep the user's choice rather than undo it
+        return base if RISK_MODELS[engine] == DEFAULT_MODELS[engine] else RISK_MODELS[engine]
+    return base
 
 
-def run_both(ctx, prompt, stem, model=None, effort=None):
+def run_both(ctx, prompt, stem, model=None, effort=None, cfg=None):
     """codex and claude on the same prompt; findings tagged by engine and merged into one
     raw file (findings.verify drops cross-engine duplicates). One engine failing is
     reported as partial; both failing raises."""
@@ -100,7 +127,7 @@ def run_both(ctx, prompt, stem, model=None, effort=None):
     for engine in BOTH:
         out = stem.parent / f"{stem.name}.{ctx['head_sha'][:8]}.{engine}.out"
         try:
-            run_engine(engine, ctx, prompt, out, *pick_model(engine, ctx, model, effort))
+            run_engine(engine, ctx, prompt, out, *pick_model(engine, ctx, model, effort, cfg))
             got = findings.extract(out.read_text(encoding="utf-8", errors="replace"))
         except (RuntimeError, ValueError, subprocess.TimeoutExpired, FileNotFoundError) as e:
             failed[engine] = str(e)[:400]
@@ -126,6 +153,10 @@ def main(argv=None):
     ctx = json.loads(Path(a.context).read_text(encoding="utf-8-sig"))  # tolerate a BOM (PowerShell edits)
     stem = Path(a.context).with_suffix("")
     prompt = build_prompt(ctx)
+    cfg = load_config()
+    a.engine = a.engine or (None if a.raw else cfg.get("reviewer"))
+    if a.engine and a.engine not in ENGINES:
+        ap.error(f"config reviewer {a.engine!r} is not one of {', '.join(ENGINES)}")
     if a.prompt_only or a.engine == "subagent" and not a.raw:
         pf = stem.parent / (stem.name + ".prompt.md")
         pf.write_text(prompt, encoding="utf-8")
@@ -141,12 +172,12 @@ def main(argv=None):
             ap.error("--model names one engine's model; not with --engine both")
         try:
             if a.engine == "both":
-                raw, failed = run_both(ctx, prompt, stem, a.model, a.effort)
+                raw, failed = run_both(ctx, prompt, stem, a.model, a.effort, cfg)
                 if failed:
                     extra["partial"] = failed
             else:
                 raw = stem.parent / f"{stem.name}.{ctx['head_sha'][:8]}.{a.engine}.out"
-                run_engine(a.engine, ctx, prompt, raw, *pick_model(a.engine, ctx, a.model, a.effort))
+                run_engine(a.engine, ctx, prompt, raw, *pick_model(a.engine, ctx, a.model, a.effort, cfg))
         except (RuntimeError, subprocess.TimeoutExpired, FileNotFoundError) as e:
             print(json.dumps({"error": str(e)[:800], "engine": a.engine}))
             return 3

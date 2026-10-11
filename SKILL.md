@@ -39,7 +39,16 @@ report. `--model`/`--effort` override it.
 `/pr-gate <owner/repo> --all-open` → `gh pr list -R <repo> --state open --json number,title,isDraft`,
 skip drafts, run the loop for each PR **one after another**.
 
-**Reviewer choice.** Use `--reviewer` if given. Otherwise ask the user once,
+**Engines are plain CLIs.** You never need a plugin or integration to use
+another model: `review.py --engine <name>` starts it through `lean_run.py`.
+How to check each one is installed and logged in, the login commands, a
+one-line test and the models: `references/engines.md`. The user's saved
+preferences (default reviewer, model per engine, e.g. cursor `auto`) live in
+`~/.pr-gate/config.json`; `review.py` applies them, and you write that file
+when the user states a preference.
+
+**Reviewer choice.** Use `--reviewer` if given, else `reviewer` from
+`config.json`. Otherwise ask the user once,
 in one line, offering the default: the *other* model from the host (Claude host
 → `codex`; Codex host → `claude`; Cursor host → `claude`), if its CLI is
 installed and logged in (`codex --version`, `claude --version`,

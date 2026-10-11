@@ -106,6 +106,38 @@ class RiskTest(unittest.TestCase):
         self.assertEqual(review.pick_model("codex", hi, effort="low"), ("gpt-6.1-sol", "low"))
         self.assertEqual(review.pick_model("claude", hi, model="sonnet"), ("sonnet", None))
 
+    def test_user_config_wins_over_defaults(self):
+        cfg = {"models": {"cursor": "auto"}, "effort": {"codex": "medium"}}
+        self.assertEqual(review.pick_model("cursor", {}, cfg=cfg), ("auto", None))
+        self.assertEqual(review.pick_model("codex", {}, cfg=cfg), ("gpt-6.1-sol", "medium"))
+        hi = {"risk": {"level": "high", "why": ["auth: a"]}}
+        self.assertEqual(review.pick_model("cursor", hi, cfg=cfg), ("auto", None))  # no stronger cursor tier: keep theirs
+        self.assertEqual(review.pick_model("claude", hi, cfg=cfg), ("opus", None))
+        self.assertEqual(review.pick_model("cursor", {}, model="composer-2.5", cfg=cfg), ("composer-2.5", None))
+
+    def test_config_file_sets_default_engine(self):
+        seen = {}
+
+        def fake_run(engine, model, prompt, cwd, effort=None, timeout_s=None):
+            seen["call"] = (engine, model)
+            return 0, json.dumps({"summary": "s", "findings": []})
+
+        with tempfile.TemporaryDirectory() as d:
+            ctx_file, _ = make_ctx(d, ci="pass")
+            Path(d, "config.json").write_text('{"reviewer": "cursor", "models": {"cursor": "auto"}}', encoding="utf-8")
+            orig = review.lean_run.run
+            review.lean_run.run = fake_run
+            os.environ["PR_GATE_HOME"] = d
+            try:
+                with redirect_stdout(io.StringIO()):
+                    rc = review.main([str(ctx_file)])
+                Path(d, "config.json").write_text("{not json", encoding="utf-8")
+                self.assertEqual(review.load_config(), {})  # broken file: defaults, never fatal
+            finally:
+                review.lean_run.run = orig
+                del os.environ["PR_GATE_HOME"]
+        self.assertEqual((rc, seen["call"]), (0, ("cursor", "auto")))
+
     def test_risk_in_prompt(self):
         with tempfile.TemporaryDirectory() as d:
             os.environ["PR_GATE_HOME"] = d

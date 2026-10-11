@@ -14,12 +14,16 @@ result, and ask before step 5 (it changes how their sessions load plugins).
    `ln -s` on macOS/Linux, `cmd /c mklink /J` on Windows). Never remove a link with a
    recursive delete; on Windows use `cmd /c rmdir "<link>"`.
 4. **Verify:** inside the folder, `python3 -m unittest discover tests` (`py -3` on Windows).
-   Expected: `Ran 72 tests ... OK`. No network is used.
+   Expected: `Ran 74 tests ... OK`. No network is used.
 5. **Optional, Claude Code only, ask first:** the inbox mod delivers fix requests to the
    session that has the PR's branch checked out. Install by linking `mod/` as
    `~/.claude/skills/pr-gate-inbox`, then `claude plugin list` must show
    `pr-gate-inbox@skills-dir` as loaded. Open sessions pick it up after `/reload-plugins`.
    It is not required: without it, fix requests go out as an app message or a PR comment.
-6. **Tell the user how to start:** in a session inside a repo, `/pr-gate owner/repo <PR number>`
+6. **Reviewers:** follow `references/engines.md` section 1 for each tool found (installed,
+   logged in), then section 2 to prove one answers. Ask the user which reviewer and model
+   they prefer (for example "Cursor on `auto`") and save it in `~/.pr-gate/config.json`
+   (section 3). Report which engines work.
+7. **Tell the user how to start:** in a session inside a repo, `/pr-gate owner/repo <PR number>`
    (in Codex or Cursor: "run pr-gate on PR <number>"). The first run asks which reviewer to
    use. Nothing merges without their literal `merge` reply.
