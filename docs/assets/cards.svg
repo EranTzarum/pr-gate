@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="940" height="204" viewBox="0 0 940 204" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-label="Three benefits: fresh eyes (a reviewer that didn't write the code), no messenger work (fix requests go to the owner session), your call (nothing merges without your merge reply)">
+  <g transform="translate(0 0)">
+    <rect width="296" height="204" rx="14" fill="#0d1117" stroke="#16A34A" stroke-opacity=".55"/>
+    <rect width="296" height="6" rx="3" fill="#16A34A"/>
+    <circle cx="44" cy="52" r="24" fill="#16A34A"/><g transform="translate(44 52)"><circle cx="-2" cy="-2" r="9" fill="none" stroke="#fff" stroke-width="3"/><path d="M5 5l8 8" stroke="#fff" stroke-width="3.5" stroke-linecap="round"/></g>
+    <text x="80" y="60" font-size="22" font-weight="700" fill="#fff">Fresh eyes</text>
+    <text x="24" y="104" font-size="16" fill="#c9d1d9">A reviewer that didn't write</text>
+    <text x="24" y="128" font-size="16" fill="#c9d1d9">the code checks it against</text>
+    <text x="24" y="152" font-size="16" fill="#c9d1d9">the repo's own docs,</text>
+    <text x="24" y="176" font-size="16" fill="#c9d1d9">after CI.</text>
+  </g>
+  <g transform="translate(322 0)">
+    <rect width="296" height="204" rx="14" fill="#0d1117" stroke="#0891B2" stroke-opacity=".55"/>
+    <rect width="296" height="6" rx="3" fill="#0891B2"/>
+    <circle cx="44" cy="52" r="24" fill="#0891B2"/><g transform="translate(44 52)"><path d="M-12 -8h24v16h-24z" fill="none" stroke="#fff" stroke-width="3" stroke-linejoin="round"/><path d="M-12 -8l12 10 12-10" fill="none" stroke="#fff" stroke-width="3" stroke-linejoin="round"/></g>
+    <text x="80" y="60" font-size="22" font-weight="700" fill="#fff">No messenger work</text>
+    <text x="24" y="104" font-size="16" fill="#c9d1d9">Fix requests go back to the</text>
+    <text x="24" y="128" font-size="16" fill="#c9d1d9">session that owns the</text>
+    <text x="24" y="152" font-size="16" fill="#c9d1d9">branch, for up to 3 rounds.</text>
+  </g>
+  <g transform="translate(644 0)">
+    <rect width="296" height="204" rx="14" fill="#0d1117" stroke="#F59E0B" stroke-opacity=".55"/>
+    <rect width="296" height="6" rx="3" fill="#F59E0B"/>
+    <circle cx="44" cy="52" r="24" fill="#F59E0B"/><g transform="translate(44 52)"><path d="M0 -12l11 4v8c0 7-5 11-11 14c-6-3-11-7-11-14v-8z" fill="none" stroke="#fff" stroke-width="3" stroke-linejoin="round"/><path d="M-5 1l4 4l7-8" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></g>
+    <text x="80" y="60" font-size="22" font-weight="700" fill="#fff">Your call</text>
+    <text x="24" y="104" font-size="16" fill="#c9d1d9">Nothing merges without your</text>
+    <text x="24" y="128" font-size="16" fill="#c9d1d9">literal merge reply, for</text>
+    <text x="24" y="152" font-size="16" fill="#c9d1d9">that PR, after the green</text>
+    <text x="24" y="176" font-size="16" fill="#c9d1d9">report.</text>
+  </g>
+</svg>

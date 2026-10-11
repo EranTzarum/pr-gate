@@ -7,21 +7,29 @@
 **Merge on a reply, not on a read.**
 A skill that reviews each pull request, sends the fixes back to the session that wrote it, and asks you only one thing at the end: `merge`?
 
-[![Works with](https://img.shields.io/badge/works%20with-Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20Cursor-16A34A)](#install-by-hand)
-[![Reviewers](https://img.shields.io/badge/reviewers-codex%20%C2%B7%20claude%20%C2%B7%20cursor-052E16)](docs/reviewers.md)
-[![Tests](https://img.shields.io/badge/tests-74%20passing-16A34A)](#install-by-hand)
-[![License: MIT](https://img.shields.io/badge/license-MIT-052E16)](LICENSE)
+<a href="docs/reviewers.md"><img src="https://img.shields.io/badge/Claude_Code-D97757?style=for-the-badge&logo=anthropic&logoColor=white" alt="Claude Code"></a>
+<a href="docs/reviewers.md"><img src="https://img.shields.io/badge/Codex-0058A0?style=for-the-badge&logo=openai&logoColor=white" alt="Codex"></a>
+<a href="docs/reviewers.md"><img src="https://img.shields.io/badge/Cursor-000000?style=for-the-badge&logo=cursor&logoColor=white" alt="Cursor"></a>
+<a href="#install-by-hand"><img src="https://img.shields.io/badge/Python_3-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python 3"></a>
+<a href="#install-by-hand"><img src="https://img.shields.io/badge/tests-74_passing-16A34A?style=for-the-badge" alt="74 tests passing"></a>
+<a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-052E16?style=for-the-badge" alt="MIT license"></a>
+
+<br>
 
 <img src="docs/assets/demo.svg" alt="Terminal: pr-gate reviews PR 12 in two rounds, then asks you to reply merge" width="860">
+
+<br>
+
+<img src="docs/assets/stats.svg" alt="74 tests passing, 3 rounds max per PR, 1 to 5 minutes per review round, 8 real PRs measured" width="860">
 
 </div>
 
 **Before:** you read the diff, paste findings into the right chat, and check back after every push.
 **After:** you type `/pr-gate owner/repo 12`, then answer one word: `merge`.
 
-| 🔍 **Fresh eyes** | 📬 **No messenger work** | 🛑 **Your call** |
-|---|---|---|
-| A reviewer that didn't write the code checks it against the repo's own docs, after CI. | Fix requests go back to the session that owns the branch, for up to 3 rounds. | Nothing merges without your literal `merge` reply. |
+<p align="center">
+  <img src="docs/assets/cards.svg" alt="Fresh eyes: a reviewer that didn't write the code checks it against the repo's own docs, after CI. No messenger work: fix requests go back to the session that owns the branch, for up to 3 rounds. Your call: nothing merges without your literal merge reply." width="860">
+</p>
 
 ## Quick start
 

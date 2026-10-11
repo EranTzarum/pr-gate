@@ -1,16 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="860" height="306" viewBox="0 0 860 306" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" role="img" aria-label="Terminal: pr-gate reviews PR 12 in two rounds and asks for a merge reply">
-  <rect width="860" height="306" rx="10" fill="#0d1117"/>
-  <path d="M0 10a10 10 0 0 1 10-10h840a10 10 0 0 1 10 10v24H0z" fill="#052E16"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="282" viewBox="0 0 860 282" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" role="img" aria-label="Terminal: pr-gate reviews PR 12 in two rounds, then asks you to reply merge">
+  <style>.l{white-space:pre}@keyframes dot{0%,100%{opacity:1}50%{opacity:.35}}.dot{animation:dot 1.6s infinite}@keyframes k1{0%,10.00%{opacity:0}11.20%,92%{opacity:1}97%,100%{opacity:0}}.k1{animation:k1 16s infinite}@keyframes k2{0%,15.63%{opacity:0}16.82%,92%{opacity:1}97%,100%{opacity:0}}.k2{animation:k2 16s infinite}@keyframes k3{0%,26.25%{opacity:0}27.45%,92%{opacity:1}97%,100%{opacity:0}}.k3{animation:k3 16s infinite}@keyframes k5{0%,37.50%{opacity:0}38.70%,92%{opacity:1}97%,100%{opacity:0}}.k5{animation:k5 16s infinite}@keyframes k6{0%,42.50%{opacity:0}43.70%,92%{opacity:1}97%,100%{opacity:0}}.k6{animation:k6 16s infinite}@keyframes k7{0%,46.25%{opacity:0}47.45%,92%{opacity:1}97%,100%{opacity:0}}.k7{animation:k7 16s infinite}@keyframes k8{0%,50.00%{opacity:0}51.20%,92%{opacity:1}97%,100%{opacity:0}}.k8{animation:k8 16s infinite}@media (prefers-reduced-motion:reduce){.l,.dot{animation:none!important;opacity:1}}</style>
+  <defs><linearGradient id="bar" x1="0" x2="1"><stop offset="0" stop-color="#052E16"/><stop offset="1" stop-color="#14532D"/></linearGradient></defs>
+  <rect width="860" height="282" rx="10" fill="#0d1117"/>
+  <path d="M0 10a10 10 0 0 1 10-10h840a10 10 0 0 1 10 10v24H0z" fill="url(#bar)"/>
   <circle cx="20" cy="17" r="6" fill="#ff5f56"/><circle cx="40" cy="17" r="6" fill="#ffbd2e"/><circle cx="60" cy="17" r="6" fill="#27c93f"/>
-  <text x="430" y="22" text-anchor="middle" fill="#86efac" font-size="12">pr-gate</text>
+  <text x="430" y="22" text-anchor="middle" fill="#86efac" font-size="12">pr-gate · owner/repo#12</text>
+  <circle class="dot" cx="836" cy="17" r="5" fill="#4ade80"/>
   <g fill="#c9d1d9">
-    <text x="24" y="66"><tspan fill="#4ade80">$ </tspan>/pr-gate owner/repo 12</text>
-    <text x="24" y="114"><tspan fill="#8b949e">round 1</tspan>  CI pass  claude  <tspan fill="#f0883e" font-weight="bold">[high]</tspan> cart.py:8  percent not bounded: 150% gives a refund</text>
-    <text x="24" y="138"><tspan fill="#8b949e">         ↳ fix request sent to the owner session, owner pushes</tspan></text>
-    <text x="24" y="162"><tspan fill="#8b949e">round 2</tspan>  CI pass  claude  <tspan fill="#3fb950" font-weight="bold">clean</tspan></text>
-    <text x="24" y="210">PR owner/repo#12 "Add discount helper" is ready. Reply <tspan fill="#4ade80" font-weight="bold">`merge`</tspan> to merge it.</text>
-    <text x="24" y="234"><tspan fill="#d2a8ff">Checked:</tspan> CI pass; claude review over 3 files, 2 rounds; repo docs</text>
-    <text x="24" y="258"><tspan fill="#d2a8ff">Left (low, optional):</tspan> cart.py:3, MAX_ITEMS defined but never enforced</text>
-    <text x="24" y="282"><tspan fill="#d2a8ff">Merging will:</tspan> merge into main; then deploy.yml: npx supabase db push --linked</text>
+    <text class="l" x="24" y="66"><tspan fill="#4ade80">$ </tspan>/pr-gate owner/repo 12</text>
+    <text class="l k1" x="24" y="90"><tspan fill="#8b949e">round 1</tspan>  CI pass  claude  <tspan fill="#f0883e" font-weight="bold">[high]</tspan> cart.py:8  percent not bounded: 150% gives a refund</text>
+    <text class="l k2" x="24" y="114"><tspan fill="#8b949e">         ↳ fix request sent to the owner session, owner pushes</tspan></text>
+    <text class="l k3" x="24" y="138"><tspan fill="#8b949e">round 2</tspan>  CI pass  claude  <tspan fill="#3fb950" font-weight="bold">clean</tspan></text>
+    <text class="l k5" x="24" y="186">PR owner/repo#12 "Add discount helper" is ready. Reply <tspan fill="#4ade80" font-weight="bold">`merge`</tspan> to merge it.</text>
+    <text class="l k6" x="24" y="210"><tspan fill="#d2a8ff">Checked:</tspan> CI pass; claude review over 3 files, 2 rounds; repo docs</text>
+    <text class="l k7" x="24" y="234"><tspan fill="#d2a8ff">Left (low, optional):</tspan> cart.py:3, MAX_ITEMS defined but never enforced</text>
+    <text class="l k8" x="24" y="258"><tspan fill="#d2a8ff">Merging will:</tspan> merge into main; then deploy.yml: npx supabase db push --linked</text>
   </g>
 </svg>
