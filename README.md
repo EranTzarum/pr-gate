@@ -61,7 +61,9 @@ Pick the tool you use. Any one of them is enough: with a single tool, the review
 
 **Easiest:** paste this repo's link into your agent and say *"install this skill"*. It follows [INSTALL.md](INSTALL.md).
 
-Or by hand:
+Or by hand, in five steps:
+
+**1. Get the skill** into the folder of the tool you use:
 
 | You use | Run once |
 |---|---|
@@ -71,25 +73,31 @@ Or by hand:
 
 On Windows, `~` is `%USERPROFILE%`. Using two of these tools? Clone it once and copy (or link) the folder into the others.
 
-Then, in a session inside the repo:
+**2. Check it:** inside the skill folder, `python3 -m unittest discover tests` (`py -3` on Windows). Expected: `Ran 74 tests ... OK`. No network calls; `gh` is mocked.
 
-```text
-/pr-gate owner/repo 12
-```
+**3. Make sure your reviewer can answer.** Every reviewer is a plain CLI, so no plugin is needed to use a model from another tool. For each one you have:
 
-In Codex or Cursor, say *"run pr-gate on PR 12"* if slash commands don't list skills. It asks once which reviewer to use, offering the best one you have installed.
+| Reviewer | Logged in? | If not, log in | Quick test (expects `ok`) |
+|---|---|---|---|
+| Codex | `codex login status` | `codex login` | `echo "Reply with exactly: ok" \| python3 ~/.claude/skills/pr-gate/scripts/lean_run.py codex --model gpt-6.1-sol --cwd .` |
+| Claude | `claude auth status` | `claude auth login` | same, with `claude --model sonnet` |
+| Cursor | `cursor-agent status` | `cursor-agent login` | same, with `cursor --model auto` (slow to start: up to ~3 min) |
 
-**Your reviewer, your model.** Every reviewer is a plain CLI (`codex`, `claude`, `cursor-agent`), so no plugin is needed to use a model from another tool. Tell the agent your preference once, for example *"review with Cursor on the auto model"*, and it saves it in `~/.pr-gate/config.json`:
+Use the skill folder you cloned into in the test command. Use `cursor-agent`, not `agent`: other tools install an `agent` command too. More (models, what each one runs): [references/engines.md](references/engines.md).
+
+**4. Optional: save your preference** in `~/.pr-gate/config.json`, or just tell the agent *"review with Cursor on the auto model"* and it writes it:
 
 ```json
 { "reviewer": "cursor", "models": { "cursor": "auto" } }
 ```
 
-Login commands, a one-line test per engine and the model list are in [references/engines.md](references/engines.md).
+**5. Run it** in a session inside your repo:
 
-> [!TIP]
-> Check the install: `python3 -m unittest discover tests` inside the skill folder (`py -3` on Windows). Expected: `Ran 74 tests ... OK`. No network calls; `gh` is mocked.
+```text
+/pr-gate owner/repo 12
+```
 
+In Codex or Cursor, say *"run pr-gate on PR 12"* if slash commands don't list skills. Without a saved preference it asks once which reviewer to use, offering the best one you have.
 ### Optional: the inbox mod (Claude Code only)
 
 You don't need it. Without it, fix requests reach the session that owns the PR as an app message (Claude desktop app) or as a PR comment, and the loop works the same.
