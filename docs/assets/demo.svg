@@ -7,11 +7,11 @@
   <text x="430" y="22" text-anchor="middle" fill="#86efac" font-size="12">pr-gate · owner/repo#12</text>
   <circle class="dot" cx="836" cy="17" r="5" fill="#4ade80"/>
   <g fill="#c9d1d9">
-    <text class="l" x="24" y="66"><tspan fill="#4ade80">$ </tspan>/pr-gate owner/repo 12</text>
+    <text class="l" x="24" y="66"><tspan fill="#4ade80" font-weight="bold">$ </tspan>/pr-gate owner/repo 12</text>
     <text class="l k1" x="24" y="90"><tspan fill="#8b949e">round 1</tspan>  CI pass  claude  <tspan fill="#f0883e" font-weight="bold">[high]</tspan> cart.py:8  percent not bounded: 150% gives a refund</text>
     <text class="l k2" x="24" y="114"><tspan fill="#8b949e">         ↳ fix request sent to the owner session, owner pushes</tspan></text>
     <text class="l k3" x="24" y="138"><tspan fill="#8b949e">round 2</tspan>  CI pass  claude  <tspan fill="#3fb950" font-weight="bold">clean</tspan></text>
-    <text class="l k5" x="24" y="186">PR owner/repo#12 "Add discount helper" is ready. Reply <tspan fill="#4ade80" font-weight="bold">`merge`</tspan> to merge it.</text>
+    <text class="l k5" x="24" y="186">PR owner/repo#12 &quot;Add discount helper&quot; is ready. Reply <tspan fill="#4ade80" font-weight="bold">`merge`</tspan> to merge it.</text>
     <text class="l k6" x="24" y="210"><tspan fill="#d2a8ff">Checked:</tspan> CI pass; claude review over 3 files, 2 rounds; repo docs</text>
     <text class="l k7" x="24" y="234"><tspan fill="#d2a8ff">Left (low, optional):</tspan> cart.py:3, MAX_ITEMS defined but never enforced</text>
     <text class="l k8" x="24" y="258"><tspan fill="#d2a8ff">Merging will:</tspan> merge into main; then deploy.yml: npx supabase db push --linked</text>
