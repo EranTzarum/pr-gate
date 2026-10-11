@@ -1,5 +1,14 @@
 # Evals
 
+## What it did in practice
+
+Measured on its first eight real pull requests:
+
+- **It catches what the writer missed.** On a 28-file PR, the session that wrote it had already reviewed its own branch. pr-gate's reviewer still found a blocker: the release workflow would have refused every future tagged release. It was fixed before merge.
+- **It's fast.** A round (fresh review of the diff, the repo's docs and the CI logs) takes 1 to 5 minutes. A two-round PR goes from open to merged in about 15 to 20 minutes, and most of that is CI.
+- **You stop being the messenger.** No more copying findings between chats or checking back after each push. You read one short report and answer one word.
+- **It costs little of your main quota.** Reviewers run lean (mid-tier model, none of your global plugins or MCP servers). With Claude as your editor and Codex as the reviewer, the review comes out of a different subscription.
+
 ## Live run 1: 2026-10-04, throwaway PR on this repo
 
 **Setup:** PR #1 "Add checkout discount helper" (an invented toy module, closed without merging, branch deleted). It had three planted problems:

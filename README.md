@@ -121,7 +121,7 @@ The optional inbox mod (Claude Code only, delivers fix requests to the session t
 | [docs/how-it-decides.md](docs/how-it-decides.md) | Why a fresh reviewer, when it stops for you, severities, what gets dropped |
 | [docs/reviewers.md](docs/reviewers.md) | Pick a reviewer, high-risk PRs, lean runs, the standalone launcher |
 | [docs/evals.md](docs/evals.md) | What it did in practice, and the live runs |
-| [docs/automation.md](docs/automation.md) | Running it unattended (not enabled) |
+| [docs/automation.md](docs/automation.md) | Running it unattended: not enabled; compares a local poll, a GitHub Action and a webhook, and recommends a 30-minute local poll after a few weeks of on-demand use |
 | [docs/repo-map.md](docs/repo-map.md) | Every file and what it does |
 
 ## License
