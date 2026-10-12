@@ -8,14 +8,17 @@ unless granted for this run. Same pattern as an orchestrator's worker sandboxes.
 Read-only by default (--write lifts it). Prints the engine's stdout; exit 3 on
 timeout (process tree killed), else the engine's exit code.
 
+run(meta=dict) records wall seconds plus whatever usage the engine printed.
+
 Measured 2026-10-04, one-line prompt:
   codex  real profile >180s (timeout)  ->  empty CODEX_HOME 20s
   claude real profile 23s              ->  user settings off 6.7s (--bare breaks login)
-  cursor 45-110s of startup on any profile (re-measured 2026-10-06, CLI 2026.10.01: no
-         hang; the earlier "hang" was this startup running past short timeouts). The CLI
-         fetches the Cursor account's plugins and MCP servers from the server whatever
-         HOME is, so a sandbox buys nothing: cursor runs on the real profile and carries
-         those tools. Opt-in only.
+  cursor ~160s fixed startup, measured 2026-10-12, then the real work (earlier
+         reads were 45-110s; the old "hang" was that startup past a short timeout).
+         The CLI fetches the Cursor account's plugins and MCP servers from the
+         server whatever HOME is, so a sandbox buys nothing: cursor runs on the
+         real profile and carries those tools. Opt-in only.
+The global skills dir (~/.agents/skills) still leaks: HOME is not redirected.
 """
 import argparse
 import json
@@ -24,10 +27,12 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 ENGINES = ("codex", "claude", "cursor")
 DEFAULT_TIMEOUT_S = 900
+ENGINE_TIMEOUT_S = {"codex": 900, "claude": 900, "cursor": 1500}
 # A lean CODEX_HOME holds only these.
 CODEX_KEEP = ("auth.json", "installation_id")
 WIN = sys.platform.startswith("win")
@@ -142,11 +147,93 @@ def kill_tree(p):
         os.killpg(p.pid, signal.SIGKILL)
 
 
-def run(engine, model, prompt, cwd, effort=None, write=False, mcp=(), skills=(), timeout_s=DEFAULT_TIMEOUT_S):
+def _json_dicts(text):
+    for line in text.splitlines():
+        s = line.strip()
+        if not s or s[0] != "{":
+            continue
+        try:
+            obj = json.loads(s)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict):
+            yield obj
+
+
+def _rate_limits(raw):
+    if not isinstance(raw, dict):
+        return None
+    out = {}
+    for src, pct, reset in (
+        (raw.get("primary"), "5h", "5h_resets_at"),
+        (raw.get("secondary"), "week", "week_resets_at"),
+    ):
+        if not isinstance(src, dict):
+            continue
+        if "used_percent" in src:
+            out[pct] = src["used_percent"]
+        if "resets_at" in src:
+            out[reset] = src["resets_at"]
+    return out or None
+
+
+def _codex_meta(stdout, run_dir):
+    usage = None
+    for obj in _json_dicts(stdout):
+        if obj.get("type") == "turn.completed" and isinstance(obj.get("usage"), dict):
+            usage = obj["usage"]
+    fallback = limits = None
+    for path in run_dir.glob("codex-home/sessions/**/rollout-*.jsonl"):
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for obj in _json_dicts(text):
+            payload = obj.get("payload")
+            if not isinstance(payload, dict) or payload.get("type") != "token_count":
+                continue
+            info = payload.get("info")
+            if isinstance(info, dict) and isinstance(info.get("total_token_usage"), dict):
+                fallback = info["total_token_usage"]
+            mapped = _rate_limits(payload.get("rate_limits"))
+            if mapped:
+                limits = mapped
+    return usage if usage is not None else fallback, limits
+
+
+def _take(meta, text, keys):
+    for obj in _json_dicts(text):
+        for k in keys:
+            if k in obj:
+                meta[k] = obj[k]
+
+
+def _fill_meta(meta, engine, model, effort, seconds, stdout, run_dir):
+    meta["seconds"] = round(float(seconds), 1)
+    meta["engine"] = engine
+    meta["model"] = model
+    meta["effort"] = effort
+    if engine == "codex":
+        usage, limits = _codex_meta(stdout, run_dir)
+        if usage is not None:
+            meta["usage"] = usage
+        if limits:
+            meta["rate_limits"] = limits
+    elif engine == "cursor":
+        _take(meta, stdout, ("duration_ms", "duration_api_ms", "usage"))
+    elif engine == "claude":
+        _take(meta, stdout, ("usage", "total_cost_usd", "duration_ms"))
+
+
+def run(engine, model, prompt, cwd, effort=None, write=False, mcp=(), skills=(),
+        timeout_s=None, meta=None):
     """Run one turn. Returns (exit_code, stdout). exit 3 = timeout, tree killed.
-    Prompt and output go through files: cursor's CLI hangs on pipes."""
+    Prompt and output go through files: cursor's CLI hangs on pipes.
+    timeout_s None uses ENGINE_TIMEOUT_S. meta, when a dict, is filled in place."""
     if not model:
         raise ValueError("model is required: lean runs never fall back to a CLI's default model")
+    if timeout_s is None:
+        timeout_s = ENGINE_TIMEOUT_S.get(engine, DEFAULT_TIMEOUT_S)
     base = Path(os.environ.get("LEAN_RUN_HOME") or Path.home() / ".lean-run")
     base.mkdir(parents=True, exist_ok=True)
     run_dir = Path(tempfile.mkdtemp(prefix=f"{engine}-", dir=base))
@@ -155,6 +242,7 @@ def run(engine, model, prompt, cwd, effort=None, write=False, mcp=(), skills=(),
         (run_dir / "prompt.txt").write_text(prompt, encoding="utf-8")
         out_path = run_dir / "out.txt"
         with open(run_dir / "prompt.txt", "rb") as fin, open(out_path, "wb") as fout:
+            t0 = time.monotonic()
             p = subprocess.Popen(argv, cwd=cwd, env=env, stdin=fin, stdout=fout,
                                  stderr=subprocess.STDOUT, start_new_session=not WIN)
             try:
@@ -163,7 +251,13 @@ def run(engine, model, prompt, cwd, effort=None, write=False, mcp=(), skills=(),
                 kill_tree(p)
                 p.wait(timeout=30)
                 code = 3
-        return code, out_path.read_text(encoding="utf-8", errors="replace")
+        stdout = out_path.read_text(encoding="utf-8", errors="replace")
+        if isinstance(meta, dict):
+            try:
+                _fill_meta(meta, engine, model, effort, time.monotonic() - t0, stdout, run_dir)
+            except Exception:
+                pass
+        return code, stdout
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)  # holds a credential copy: never leave it behind
 
@@ -177,17 +271,20 @@ def main(argv=None):
     ap.add_argument("--write", action="store_true", help="allow edits (default read-only)")
     ap.add_argument("--mcp", action="append", default=[], help="grant one MCP server for this run (repeatable)")
     ap.add_argument("--skill", action="append", default=[], help="grant one skill for this run (repeatable)")
-    ap.add_argument("--timeout-min", type=int, default=DEFAULT_TIMEOUT_S // 60)
+    ap.add_argument("--timeout-min", type=int, default=None,
+                    help="minutes (default: that engine's limit)")
     a = ap.parse_args(argv)
+    timeout_s = None if a.timeout_min is None else a.timeout_min * 60
     try:
         code, out = run(a.engine, a.model, sys.stdin.read(), Path(a.cwd).resolve(), a.effort, a.write,
-                        a.mcp, a.skill, a.timeout_min * 60)
+                        a.mcp, a.skill, timeout_s)
     except (RuntimeError, ValueError) as e:
         print(f"lean_run: {e}", file=sys.stderr)
         return 2
     sys.stdout.write(out)
     if code == 3:
-        print(f"lean_run: no answer in {a.timeout_min} min; process tree killed", file=sys.stderr)
+        mins = ENGINE_TIMEOUT_S.get(a.engine, DEFAULT_TIMEOUT_S) // 60 if a.timeout_min is None else a.timeout_min
+        print(f"lean_run: no answer in {mins} min; process tree killed", file=sys.stderr)
     return code
 
 

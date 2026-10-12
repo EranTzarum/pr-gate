@@ -25,14 +25,15 @@ earlier on PATH, and it fails with Cursor's flags in a way that looks like a mod
 ```bash
 echo "Reply with exactly: ok" | python3 <skill>/scripts/lean_run.py codex  --model gpt-6.1-sol --effort low --cwd .
 echo "Reply with exactly: ok" | python3 <skill>/scripts/lean_run.py claude --model sonnet --cwd .
-echo "Reply with exactly: ok" | python3 <skill>/scripts/lean_run.py cursor --model auto --cwd .
+echo "Reply with exactly: ok" | python3 <skill>/scripts/lean_run.py cursor --model composer-2.5 --cwd .
 ```
 
 On PowerShell, write the prompt to a file and use `Get-Content prompt.txt | py -3 ...`.
 
-Typical times: codex 20-40 s, claude about 7 s, cursor 50-170 s (its CLI loads the account's
-plugins first). Exit 3 means it timed out and was killed; any other non-zero exit with an
-"Authentication required" line means: ask the user to log in (table above).
+Typical times: codex 20-40 s, claude about 7 s, cursor about 160 s fixed startup per run
+(measured 2026-10-12, whatever the model), then the review work. Exit 3 means it timed out
+and was killed; any other non-zero exit with an "Authentication required" line means: ask the
+user to log in (table above).
 
 ## 3. Models
 
@@ -46,16 +47,30 @@ plugins first). Exit 3 means it timed out and was killed; any other non-zero exi
 ```json
 {
   "reviewer": "cursor",
-  "models": {"cursor": "auto", "codex": "gpt-6.1-sol"},
+  "models": {"cursor": "composer-2.5", "codex": "gpt-6.1-sol"},
   "effort": {"codex": "low"},
-  "risk_models": {"codex": "gpt-6.1-sol"}
+  "risk_models": {"codex": "gpt-6.1-sol"},
+  "budget": {
+    "codex_5h_max_pct": 80,
+    "codex_week_max_pct": 90,
+    "fallback": "cursor"
+  }
 }
 ```
 
 `reviewer` is the engine used when none is given. `models`/`effort` replace the defaults per
 engine. `risk_models` replaces the high-risk model; for an engine with no stronger tier
-(cursor), a high-risk PR keeps the user's model. Create this file when the user states a
-preference ("I want Cursor on auto"), then show it to them.
+(cursor), a high-risk PR keeps the user's model. `budget` is optional: before a codex run,
+`review.py` compares the latest logged codex `rate_limits` to these ceilings; at or over a
+set limit it runs `fallback` (`claude` or `cursor`, default `cursor`) and sets
+`budget_switch` in the result. Omit a key to ignore that window. Create this file when the
+user states a preference, then show it to them.
+
+**Cursor as reviewer:** plan on 10-25 minutes for a real PR (the CLI reads roughly one file
+per step). Timeout is 25 minutes. **Never use `auto`:** Cursor bills Auto at the routed
+model's list price from the metered "Other Models" pool; pick `composer-2.5` or a
+`grok-4.7-*` slug from `cursor-agent models`. With `--output-format json`, the CLI prints
+JSON only at the end, so an empty output file while the run is in progress is normal.
 
 ## 4. What lean_run actually runs
 
@@ -67,8 +82,8 @@ You never type these yourself; they are here so you can debug a failing engine.
 | claude | `claude -p --model <model> --output-format json --setting-sources project,local --strict-mcp-config --permission-mode plan --disable-slash-commands` |
 | cursor | `cursor-agent -p --model <model> --trust --output-format json --workspace <checkout> --mode ask` |
 
-Prompt and output go through files, never pipes (cursor hangs on pipes). A run that goes past
-15 minutes is killed with its whole process tree.
+Prompt and output go through files, never pipes (cursor hangs on pipes). Per-engine timeouts
+(codex and claude 15 minutes, cursor 25 minutes) kill the whole process tree.
 
 ## 5. Picking for the user
 

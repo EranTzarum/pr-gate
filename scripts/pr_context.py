@@ -17,6 +17,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import findings  # noqa: E402
 from redact import redact  # noqa: E402
 
 VIEW_FIELDS = ("number,title,body,author,headRefName,headRefOid,baseRefName,url,"
@@ -38,6 +39,8 @@ LOG_CONTEXT_BEFORE, LOG_CONTEXT_AFTER, LOG_MAX_HITS = 12, 4, 4
 LOG_MAX_CHARS = 20000
 ARTIFACT_MAX_BYTES = 2_000_000
 ARTIFACT_MAX = 3
+DOC_MAX_CHARS = 15000
+DIGEST_MAX_CHARS = 40000
 
 
 def run(args, cwd=None, check=True):
@@ -160,7 +163,7 @@ def merge_rules(root, docs):
 
 
 # ponytail: path-name heuristics. A miss means a mid-tier review, not no review.
-RISK = (("migration", re.compile(r"(^|/)migrations?/|\.sql$|(^|/)supabase/", re.I)),
+RISK = (("migration", re.compile(r"(^|/)migrations?/|\.sql$", re.I)),
         ("auth", re.compile(r"(^|/)auth(n|z|entication|orization)?([/._-]|$)|\brls\b|_rls|rls_|polic(y|ies)|permissions?", re.I)),
         ("workflow", re.compile(r"^\.github/workflows/", re.I)),
         ("payment", re.compile(r"payment|billing|stripe|checkout|invoice|subscription", re.I)))
@@ -168,7 +171,14 @@ RISK = (("migration", re.compile(r"(^|/)migrations?/|\.sql$|(^|/)supabase/", re.
 
 def risk(files):
     """High when the PR touches migrations, auth/RLS, CI workflows or payments."""
-    why = [f"{name}: {f}" for f in files or [] for name, rx in RISK if rx.search(f or "")]
+    why = []
+    for f in files or []:
+        fn = (f or "").replace("\\", "/")
+        for name, rx in RISK:
+            if name == "migration" and re.search(r"(^|/)tests?/", fn, re.I) and not re.search(r"(^|/)migrations?/", fn, re.I):
+                continue
+            if rx.search(fn):
+                why.append(f"{name}: {f}")
     return {"level": "high" if why else "normal", "why": why[:6]}
 
 
@@ -275,6 +285,69 @@ def checkout(repo, pr, dest):
     run(["git", "-C", str(dest), "checkout", "--quiet", "--detach", "--force", "FETCH_HEAD"])
 
 
+def delta_diff(root, last_sha, head_sha, work, safe, pr):
+    if not last_sha:
+        return None, "first round"
+    try:
+        try:
+            run(["git", "-C", str(root), "cat-file", "-e", f"{last_sha}^{{commit}}"])
+        except Exception:
+            run(["git", "-C", str(root), "fetch", "--quiet", "origin", last_sha], check=False)
+            try:
+                run(["git", "-C", str(root), "cat-file", "-e", f"{last_sha}^{{commit}}"])
+            except Exception:
+                return None, "last reviewed commit not found (force-push?)"
+        raw = run(["git", "-C", str(root), "diff", last_sha, head_sha])
+        work_dir = Path(work)
+        work_dir.mkdir(parents=True, exist_ok=True)
+        out = work_dir / f"{safe}__{pr}.delta.diff"
+        out.write_text(redact(raw), encoding="utf-8")
+        return str(out), None
+    except Exception as e:
+        return None, str(e)[:100]
+
+
+def docs_digest(root, docs, work, safe, pr):
+    root = Path(root)
+
+    def _doc_key(d):
+        norm = d.replace("\\", "/").lower()
+        if norm == "agents.md":
+            return 0
+        if norm.endswith("/agents.md"):
+            return 1
+        return 2
+
+    ordered = sorted(docs or [], key=_doc_key)
+    sections = []
+    budget = DIGEST_MAX_CHARS
+    for d in ordered:
+        p = root / d
+        try:
+            text = p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            text = ""
+        take = min(len(text), DOC_MAX_CHARS, max(0, budget))
+        chunk = text[:take]
+        budget -= take
+        if take < len(text):
+            more = len(text) - take
+            trunc = f"[truncated: {d} has {more} more chars; open it only if a finding depends on it]\n"
+            if chunk.endswith("\n"):
+                chunk += trunc
+            else:
+                chunk += ("\n" if chunk else "") + trunc
+        elif chunk and not chunk.endswith("\n"):
+            chunk += "\n"
+        sections.append(f"### {d}\n{chunk}")
+    digest_text = redact("\n".join(sections))
+    work_dir = Path(work)
+    work_dir.mkdir(parents=True, exist_ok=True)
+    out = work_dir / f"{safe}__{pr}.docs.md"
+    out.write_text(digest_text, encoding="utf-8")
+    return str(out)
+
+
 def gather(repo, pr, work):
     work = Path(work)
     work.mkdir(parents=True, exist_ok=True)
@@ -299,13 +372,19 @@ def gather(repo, pr, work):
     checkout(repo, pr, root)
     files = [f.get("path") for f in view.get("files") or []]
     docs = repo_docs(root)
+    head_sha = view.get("headRefOid")
+    st = findings.load(repo, pr)
+    prior = [r["sha"] for r in (st.get("rounds") or []) if r.get("sha") and r.get("sha") != head_sha]
+    last_reviewed_sha = prior[-1] if prior else None
+    delta_file, delta_note = delta_diff(root, last_reviewed_sha, head_sha, work, safe, pr)
+    docs_digest_file = docs_digest(root, docs, work, safe, pr)
     ctx = {
         "repo": repo, "pr": pr, "url": view.get("url"), "title": view.get("title"),
         "body": redact(view.get("body") or ""), "author": (view.get("author") or {}).get("login"),
-        "head": view.get("headRefName"), "head_sha": view.get("headRefOid"),
+        "head": view.get("headRefName"), "head_sha": head_sha,
         "base": base, "draft": view.get("isDraft"),
         "mergeable": view.get("mergeable"), "merge_state": view.get("mergeStateStatus"),
-        "behind_base": behind_base(repo, view.get("headRefOid"), base),
+        "behind_base": behind_base(repo, head_sha, base),
         "size": {"files": len(files), "additions": view.get("additions"),
                  "deletions": view.get("deletions")},
         "files": files,
@@ -315,7 +394,11 @@ def gather(repo, pr, work):
         "base_ci": base_ci(repo, base, checks),
         "failed_logs": redact("\n".join(logs))[:LOG_MAX_CHARS],
         "checkout": str(root), "diff_file": str(diff_file),
+        "last_reviewed_sha": last_reviewed_sha,
+        "delta_diff_file": delta_file,
+        "delta_note": delta_note,
         "docs": docs,
+        "docs_digest_file": docs_digest_file,
         "merge_rules": merge_rules(root, docs),
         "merge_triggers": merge_triggers(root, base, files),
         "risk": risk(files),
@@ -337,7 +420,9 @@ def main(argv=None):
     ctx = gather(a.repo, a.pr, a.work)
     print(json.dumps({k: ctx[k] for k in ("context_file", "ci", "base_ci", "head_sha", "draft",
                                           "merge_state", "behind_base", "owner", "docs",
-                                          "merge_rules", "merge_triggers", "risk", "size")}, indent=2))
+                                          "merge_rules", "merge_triggers", "risk", "size",
+                                          "last_reviewed_sha", "delta_diff_file", "delta_note",
+                                          "docs_digest_file")}, indent=2))
     return 0
 
 

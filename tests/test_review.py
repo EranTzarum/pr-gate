@@ -7,6 +7,9 @@ import time
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
+
+WORKTREE = Path(__file__).resolve().parents[1]
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import review  # noqa: E402
@@ -29,7 +32,7 @@ def make_ctx(d, ci="fail"):
 
 class PromptTest(unittest.TestCase):
     def test_all_placeholders_filled(self):
-        with tempfile.TemporaryDirectory() as d:
+        with tempfile.TemporaryDirectory(dir=WORKTREE) as d:
             os.environ["PR_GATE_HOME"] = d
             try:
                 _, ctx = make_ctx(d)
@@ -44,7 +47,7 @@ class PromptTest(unittest.TestCase):
             self.assertIn(s, text)
 
     def test_base_ci_told_to_reviewer(self):
-        with tempfile.TemporaryDirectory() as d:
+        with tempfile.TemporaryDirectory(dir=WORKTREE) as d:
             os.environ["PR_GATE_HOME"] = d
             try:
                 _, ctx = make_ctx(d)
@@ -57,17 +60,26 @@ class PromptTest(unittest.TestCase):
 
 
 class EngineDefaultsTest(unittest.TestCase):
+    def setUp(self):
+        home = tempfile.TemporaryDirectory(dir=WORKTREE)
+        self.addCleanup(home.cleanup)
+        env = patch.dict(os.environ, PR_GATE_HOME=home.name)
+        env.start()
+        self.addCleanup(env.stop)
+
     def test_defaults_are_explicit_mid_tier(self):
         seen = {}
 
-        def fake_run(engine, model, prompt, cwd, effort=None, timeout_s=None):
+        def fake_run(engine, model, prompt, cwd, effort=None, timeout_s=None, meta=None):
+            if meta is not None:
+                meta.update(seconds=1.5, engine=engine, model=model, effort=effort)
             seen[engine] = (model, effort)
             return 0, "{}"
 
         orig = review.lean_run.run
         review.lean_run.run = fake_run
         try:
-            with tempfile.TemporaryDirectory() as d:
+            with tempfile.TemporaryDirectory(dir=WORKTREE) as d:
                 _, ctx = make_ctx(d)
                 for engine in ("codex", "claude", "cursor"):
                     review.run_engine(engine, ctx, "p", Path(d) / f"{engine}.out")
@@ -82,7 +94,7 @@ class EngineDefaultsTest(unittest.TestCase):
         orig = review.lean_run.run
         review.lean_run.run = lambda *a, **k: (3, "")
         try:
-            with tempfile.TemporaryDirectory() as d:
+            with tempfile.TemporaryDirectory(dir=WORKTREE) as d:
                 _, ctx = make_ctx(d)
                 with self.assertRaises(RuntimeError) as cm:
                     review.run_engine("cursor", ctx, "p", Path(d) / "o.out")
@@ -118,11 +130,13 @@ class RiskTest(unittest.TestCase):
     def test_config_file_sets_default_engine(self):
         seen = {}
 
-        def fake_run(engine, model, prompt, cwd, effort=None, timeout_s=None):
+        def fake_run(engine, model, prompt, cwd, effort=None, timeout_s=None, meta=None):
+            if meta is not None:
+                meta.update(seconds=1.5, engine=engine, model=model, effort=effort)
             seen["call"] = (engine, model)
             return 0, json.dumps({"summary": "s", "findings": []})
 
-        with tempfile.TemporaryDirectory() as d:
+        with tempfile.TemporaryDirectory(dir=WORKTREE) as d:
             ctx_file, _ = make_ctx(d, ci="pass")
             Path(d, "config.json").write_text('{"reviewer": "cursor", "models": {"cursor": "auto"}}', encoding="utf-8")
             orig = review.lean_run.run
@@ -139,7 +153,7 @@ class RiskTest(unittest.TestCase):
         self.assertEqual((rc, seen["call"]), (0, ("cursor", "auto")))
 
     def test_risk_in_prompt(self):
-        with tempfile.TemporaryDirectory() as d:
+        with tempfile.TemporaryDirectory(dir=WORKTREE) as d:
             os.environ["PR_GATE_HOME"] = d
             try:
                 _, ctx = make_ctx(d)
@@ -152,7 +166,9 @@ class RiskTest(unittest.TestCase):
 
 class BothTest(unittest.TestCase):
     def run_main(self, d, outputs, extra_ctx=None):
-        def fake_run(engine, model, prompt, cwd, effort=None, timeout_s=None):
+        def fake_run(engine, model, prompt, cwd, effort=None, timeout_s=None, meta=None):
+            if meta is not None:
+                meta.update(seconds=1.5, engine=engine, model=model, effort=effort)
             return outputs[engine]
 
         ctx_file, ctx = make_ctx(d, ci="pass")
@@ -174,7 +190,7 @@ class BothTest(unittest.TestCase):
         codex = json.dumps({"summary": "s", "findings": [finding(2, "medium", "empty list")]})
         claude = json.dumps({"summary": "longer summary", "findings": [
             finding(3, "high", "header-only export"), finding(1, "low", "other")]})
-        with tempfile.TemporaryDirectory() as d:
+        with tempfile.TemporaryDirectory(dir=WORKTREE) as d:
             rc, out = self.run_main(d, {"codex": (0, codex), "claude": (0, claude)},
                                     {"risk": {"level": "high", "why": ["payment: x"]}})
         self.assertEqual(rc, 0)
@@ -187,16 +203,18 @@ class BothTest(unittest.TestCase):
 
     def test_same_engine_neighbours_both_kept(self):
         codex = json.dumps({"summary": "s", "findings": [finding(1, "medium", "a"), finding(2, "medium", "b")]})
-        with tempfile.TemporaryDirectory() as d:
+        with tempfile.TemporaryDirectory(dir=WORKTREE) as d:
             rc, out = self.run_main(d, {"codex": (0, codex), "claude": (1, "")})
         self.assertEqual(len(out["kept"]), 2)
         self.assertIn("claude", out["partial"])
 
     def test_no_json_shows_engine_output(self):
-        def fake_run(engine, model, prompt, cwd, effort=None, timeout_s=None):
+        def fake_run(engine, model, prompt, cwd, effort=None, timeout_s=None, meta=None):
+            if meta is not None:
+                meta.update(seconds=1.5, engine=engine, model=model, effort=effort)
             return 1, "Error: Authentication required. Please run 'agent login' first."
 
-        with tempfile.TemporaryDirectory() as d:
+        with tempfile.TemporaryDirectory(dir=WORKTREE) as d:
             ctx_file, _ = make_ctx(d, ci="pass")
             orig = review.lean_run.run
             review.lean_run.run = fake_run
@@ -212,7 +230,7 @@ class BothTest(unittest.TestCase):
         self.assertIn("Authentication required", json.loads(buf.getvalue())["engine_output"])
 
     def test_both_fail_is_exit_3(self):
-        with tempfile.TemporaryDirectory() as d:
+        with tempfile.TemporaryDirectory(dir=WORKTREE) as d:
             rc, out = self.run_main(d, {"codex": (3, ""), "claude": (1, "")})
         self.assertEqual(rc, 3)
         self.assertIn("both engines failed", out["error"])
@@ -220,7 +238,7 @@ class BothTest(unittest.TestCase):
 
 class RawGateTest(unittest.TestCase):
     def test_raw_output_is_gated(self):
-        with tempfile.TemporaryDirectory() as d:
+        with tempfile.TemporaryDirectory(dir=WORKTREE) as d:
             os.environ["PR_GATE_HOME"] = d
             try:
                 ctx_file, _ = make_ctx(d, ci="pass")
@@ -244,6 +262,178 @@ class RawGateTest(unittest.TestCase):
         out = json.loads(buf.getvalue())
         self.assertEqual(rc, 0)
         self.assertEqual((out["verdict"], out["action"], out["round"]), ("fix", "send-fix", 1))
+
+
+class ReviewCostTest(unittest.TestCase):
+    def setUp(self):
+        home = tempfile.TemporaryDirectory(dir=WORKTREE)
+        self.addCleanup(home.cleanup)
+        self.home = Path(home.name)
+        env = patch.dict(os.environ, PR_GATE_HOME=home.name)
+        env.start()
+        self.addCleanup(env.stop)
+        self.context_file, self.ctx = make_ctx(home.name, ci="pass")
+        self.calls = []
+
+        def fake_run(engine, model, prompt, cwd, effort=None, timeout_s=None, meta=None):
+            self.calls.append((engine, model, effort, timeout_s))
+            meta.update(seconds=2.5, engine=engine, model=model, effort=effort,
+                        usage={"input_tokens": 100})
+            return 0, json.dumps({"summary": "s", "findings": []})
+
+        runner = patch.object(review.lean_run, "run", side_effect=fake_run)
+        self.runner = runner.start()
+        self.addCleanup(runner.stop)
+
+    def run_main(self, *args):
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = review.main([str(self.context_file), *args])
+        return rc, json.loads(buf.getvalue())
+
+    def config_budget(self, fallback="cursor"):
+        (self.home / "config.json").write_text(json.dumps({
+            "budget": {"codex_5h_max_pct": 80, "codex_week_max_pct": 90, "fallback": fallback},
+            "models": {"cursor": "auto"}}), encoding="utf-8")
+
+    def seed_rounds(self, shas):
+        for sha in shas:
+            review.findings.record(self.ctx["repo"], self.ctx["pr"], sha, "pass", "green", {})
+
+    def test_delta_and_empty_delta_fallback(self):
+        delta = self.home / "delta.diff"
+        delta.write_text("+const fixed = 2\n", encoding="utf-8")
+        self.ctx.update(delta_diff_file=str(delta), last_reviewed_sha="1234567890")
+        prompt = review.build_prompt(self.ctx)
+        self.assertIn("Changes since the round you last reviewed (12345678..abcdef12)", prompt)
+        self.assertIn("### All files this PR changes\n\n- src/export.ts", prompt)
+        self.assertIn("+const fixed = 2", prompt)
+        self.assertNotIn("+const x = 1", prompt)
+        delta.write_text("", encoding="utf-8")
+        self.assertIn("+const x = 1", review.build_prompt(self.ctx))
+        delta.unlink()
+        self.assertIn("+const x = 1", review.build_prompt(self.ctx))
+
+    def test_delta_is_capped(self):
+        delta = self.home / "delta.diff"
+        delta.write_text("+x\n" * (review.DIFF_MAX_CHARS // 3 + 1) + "TAIL", encoding="utf-8")
+        self.ctx.update(delta_diff_file=str(delta), last_reviewed_sha="1234567890")
+        prompt = review.build_prompt(self.ctx)
+        self.assertIn("diff truncated", prompt)
+        self.assertNotIn("TAIL", prompt)
+        self.assertIn("### All files this PR changes", prompt)
+
+    def test_digest_inlined_and_missing_digest_fallback(self):
+        digest = self.home / "docs.md"
+        digest.write_text("### CLAUDE.md\nKeep UTF-8: café.\n", encoding="utf-8")
+        self.ctx["docs_digest_file"] = str(digest)
+        prompt = review.build_prompt(self.ctx)
+        self.assertIn("Keep UTF-8: café.", prompt)
+        self.assertNotIn("- CLAUDE.md", prompt)
+        self.assertIn("Get-Content -Raw -Encoding utf8", prompt)
+        self.assertNotIn("Read these before judging anything", prompt)
+        digest.unlink()
+        self.assertIn("- CLAUDE.md", review.build_prompt(self.ctx))
+
+    def test_usage_output_log_and_timeouts(self):
+        rc, out = self.run_main("--engine", "codex")
+        self.assertEqual(rc, 0)
+        self.assertEqual(out["usage"]["codex"]["seconds"], 2.5)
+        records = [json.loads(line) for line in (self.home / "usage.jsonl").read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(len(records), 1)
+        self.assertEqual((records[0]["repo"], records[0]["pr"], records[0]["sha"], records[0]["round"]),
+                         ("o/r", 5, self.ctx["head_sha"], 1))
+        self.assertEqual(records[0]["usage"], {"input_tokens": 100})
+        self.run_main("--engine", "cursor")
+        self.assertEqual(self.calls[-1][3], review.lean_run.ENGINE_TIMEOUT_S["cursor"])
+
+    def test_budget_switch_uses_fallback_model_even_with_explicit_model(self):
+        self.config_budget()
+        with patch.object(review.usage, "last_limits", return_value={"5h": 85, "week": 20}):
+            rc, out = self.run_main("--engine", "codex", "--model", "gpt-6-luna", "--effort", "high")
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.calls[0][:3], ("cursor", "auto", None))
+        self.assertEqual(out["budget_switch"], {"from": "codex", "to": "cursor", "5h": 85, "week": 20})
+        self.assertEqual(set(out["usage"]), {"cursor"})
+
+    def test_ignore_budget(self):
+        self.config_budget()
+        with patch.object(review.usage, "last_limits", return_value={"5h": 85}) as limits:
+            _, out = self.run_main("--engine", "codex", "--ignore-budget")
+        self.assertEqual(self.calls[0][0], "codex")
+        limits.assert_not_called()
+        self.assertNotIn("budget_switch", out)
+
+    def test_budget_week_and_missing_limits(self):
+        self.config_budget()
+        with patch.object(review.usage, "last_limits", return_value={"week": 90}):
+            _, out = self.run_main("--engine", "codex")
+        self.assertEqual(out["budget_switch"]["to"], "cursor")
+        with patch.object(review.usage, "last_limits", return_value=None):
+            _, out = self.run_main("--engine", "codex")
+        self.assertEqual(self.calls[-1][0], "codex")
+        self.assertNotIn("budget_switch", out)
+
+    def test_budget_resets_at(self):
+        self.config_budget()
+        now = time.time()
+        with patch.object(review.usage, "last_limits", return_value={"5h": 95, "5h_resets_at": now - 60, "week": 10}):
+            _, out = self.run_main("--engine", "codex")
+        self.assertEqual(self.calls[-1][0], "codex")
+        self.assertNotIn("budget_switch", out)
+
+        with patch.object(review.usage, "last_limits", return_value={"5h": 95, "5h_resets_at": now + 60, "week": 10}):
+            _, out = self.run_main("--engine", "codex")
+        self.assertEqual(self.calls[-1][0], "cursor")
+        self.assertIn("budget_switch", out)
+
+        with patch.object(review.usage, "last_limits", return_value={"5h": 95, "5h_resets_at": now - 60, "week": 95, "week_resets_at": now + 60}):
+            _, out = self.run_main("--engine", "codex")
+        self.assertEqual(self.calls[-1][0], "cursor")
+        self.assertIn("budget_switch", out)
+
+    def test_both_usage_and_budget_switch(self):
+        _, out = self.run_main("--engine", "both")
+        self.assertEqual(set(out["usage"]), {"codex", "claude"})
+        self.calls.clear()
+        self.config_budget()
+        with patch.object(review.usage, "last_limits", return_value={"5h": 85}):
+            _, out = self.run_main("--engine", "both")
+        self.assertEqual([call[0] for call in self.calls], ["cursor", "claude"])
+        self.assertEqual(set(out["usage"]), {"cursor", "claude"})
+        self.assertIn("budget_switch", out)
+
+    def test_both_claude_fallback_runs_once(self):
+        self.config_budget(fallback="claude")
+        with patch.object(review.usage, "last_limits", return_value={"5h": 85}):
+            rc, out = self.run_main("--engine", "both")
+        self.assertEqual(rc, 0)
+        self.assertEqual([call[0] for call in self.calls], ["claude"])
+        self.assertEqual(set(out["usage"]), {"claude"})
+
+    def test_round_cap_and_extra_round(self):
+        self.seed_rounds(["old1", "old2", "old3"])
+        rc, out = self.run_main("--engine", "codex")
+        self.assertEqual(rc, 3)
+        self.assertIn("round cap reached (3)", out["error"])
+        self.assertEqual(self.calls, [])
+        rc, _ = self.run_main("--engine", "codex", "--extra-round")
+        self.assertEqual(rc, 0)
+        self.assertEqual(len(self.calls), 1)
+
+    def test_same_head_runs_at_cap(self):
+        self.seed_rounds(["old1", "old2", self.ctx["head_sha"]])
+        rc, out = self.run_main("--engine", "codex")
+        self.assertEqual(rc, 0)
+        self.assertEqual(out["round"], 3)
+
+    def test_raw_gate_bypasses_round_cap(self):
+        self.seed_rounds(["old1", "old2", "old3"])
+        raw = self.home / "raw.out"
+        raw.write_text(json.dumps({"summary": "s", "findings": []}), encoding="utf-8")
+        rc, _ = self.run_main("--raw", str(raw))
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.calls, [])
 
 
 if __name__ == "__main__":

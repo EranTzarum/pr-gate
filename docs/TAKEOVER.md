@@ -3,9 +3,12 @@
 For the "pr-gate skill" session: opened in the umbrella folder, working only inside `pr-gate/`.
 Read this first, then `AGENTS.md`, `SKILL.md`, and `docs/evals.md` (the evidence for every rule).
 
-## State (2026-10-12) · `main` @ `13eba4a`, clean, pushed
+## State (2026-10-13) · `main` after the review-cost landing
 
-- **Repo:** public, `main` only. Gate green: `py -3 -m unittest discover tests` (74 tests),
+- **Cost work (2026-10-12):** usage ledger (`scripts/usage.py`), codex budget switch, round cap
+  with `--extra-round`, round-2+ delta diff and docs digest, Cursor 25 min timeout; docs in
+  `SKILL.md`, `references/engines.md`, evals section below.
+- **Repo:** public, `main` only. Gate green: `py -3 -m unittest discover tests` (106 tests),
   `claude plugin test mod` (4). Installed for Claude Code through a junction in
   `~/.claude/skills/pr-gate`, so **this folder must stay on `main`**: every session loads the skill
   from whatever is checked out here. Codex and Cursor get **copies** (Windows and WSL) in
@@ -52,6 +55,7 @@ Read this first, then `AGENTS.md`, `SKILL.md`, and `docs/evals.md` (the evidence
    misses. Design it then (risk `normal`, CI green, no findings above low, the repo allows it).
 5. **Docs-only PRs:** consider skipping the review or using the cheapest engine.
 6. `lean_run.py` lives here (move if a third consumer appears); `--all-open` is sequential.
+7. **Verify the cost cut live** (`usage.py` numbers before/after the context and budget changes).
 ## How to test a change
 
 - **Unit:** `py -3 -m unittest discover tests`. No network; `pr_context.run` is mocked.

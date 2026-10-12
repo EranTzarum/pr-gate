@@ -196,3 +196,22 @@ The run went from start to merged in about 15 minutes (07:39 to 07:54 UTC):
 - **PR B (4 files, a metrics script):** three rounds, one new medium each, then escalation. All three were one root cause, "missing data silently becomes zero", found one place at a time: unreadable ledgers dropped, missing usage reported as zero, then the same in discarded attempts. The owner fixed each line it was shown, not the pattern, so the loop never converged.
 - **Fix:** the reviewer prompt now asks for one finding per root cause, worded as a pattern, with the other places listed and the changed files searched for siblings first. The fix request tells the owner to fix the pattern everywhere. A later finding with the same cause is titled "still: ..." and keeps its earlier severity.
 - **Not exercised in real use yet:** the inbox mod (the gate session owned both PRs), `--engine both`, cursor.
+
+## Cost investigation, 2026-10-12
+
+Measured on real pr-gate runs (repos described by shape only):
+
+- **51 Codex review runs:** 20 in one day used 16.8M input tokens (15.1M cached), 60k output.
+- **One review of an 18-file app PR:** 1.0-1.28M input, 13-16 commands, about 4 min.
+- **Read bytes:** docs 61%, code 37%, search 2% (a code graph would save at most ~2%).
+- **8.5 files re-read per run** (PowerShell encoding).
+- **One PR ran 7 rounds**, each re-reading a 117 KB diff.
+- **Cursor:** not a hang. 63 tool calls in 14.6 min, killed by the old 15-min timeout; `auto`
+  routed to `grok-4.7-high`; ~160 s fixed startup on a one-word prompt.
+
+**What changed in response:** per-run usage in `lean_run` and a `usage.jsonl` ledger plus
+`scripts/usage.py`; round-2+ delta diffs and an inlined docs digest in context; a `budget` block
+in config that switches away from Codex near its limits (`--ignore-budget` to override); a hard
+round cap with `--extra-round`; Cursor timeout raised to 25 min; a narrower migration risk rule.
+
+**Results after the change:** TBD (live re-run pending).

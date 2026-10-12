@@ -6,11 +6,11 @@ service. Your working directory is a detached checkout of the PR head.
 
 {{PR_HEADER}}
 
-## Repo docs to read first
+## Repo rules
 
-Read these before judging anything. Their rules and invariants are the
-standard this change is held to:
-{{DOCS}}
+These are the repo's rules, included below. Do not open these files again unless a finding depends on a part marked truncated.
+Their rules and invariants are the standard this change is held to:
+{{DOCS_TEXT}}
 
 ## CI
 
@@ -44,6 +44,7 @@ Skip style, naming, formatting and "consider refactoring".
 
 ## Rules for every finding
 
+- On Windows, read files with `Get-Content -Raw -Encoding utf8` (plain Get-Content garbles UTF-8). Read several files in one command when you can.
 - Open the file and confirm the problem at that exact line in this checkout.
   If you cannot point to the line, drop it.
 - Give a concrete failure scenario: who does what, with what input, and what

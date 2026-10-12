@@ -133,6 +133,84 @@ class RunTest(unittest.TestCase):
         self.assertEqual(code, 3)
         self.assertLess(time.monotonic() - start, 20)
 
+    def test_run_without_meta(self):
+        with mock.patch.object(lean_run, "build", self.fake("print('ok')")):
+            got = lean_run.run("codex", "m", "x", Path("."))
+        self.assertEqual(len(got), 2)
+        self.assertEqual(got[0], 0)
+        self.assertIn("ok", got[1])
+
+    def test_codex_meta_usage_and_limits(self):
+        script = (
+            "import json,os\n"
+            "from pathlib import Path\n"
+            "p = Path(os.environ['LEAN_TEST_RUN_DIR'])/'codex-home'/'sessions'/'2026'/'10'/'12'\n"
+            "p.mkdir(parents=True)\n"
+            "row = {'type':'event_msg','payload':{'type':'token_count',"
+            "'info':{'total_token_usage':{'input_tokens':1,'output_tokens':1,'total_tokens':2}},"
+            "'rate_limits':{'primary':{'used_percent':2.0,'window_minutes':300,'resets_at':1791756925},"
+            "'secondary':{'used_percent':21.0,'window_minutes':10080,'resets_at':1792307083}}}}\n"
+            "(p/'rollout-x.jsonl').write_text(json.dumps(row)+'\\n', encoding='utf-8')\n"
+            "print('noise')\n"
+            "print(json.dumps({'type':'turn.completed','usage':{'input_tokens':3,'output_tokens':4}}))\n"
+        )
+
+        def fake_build(engine, model, cwd, run_dir, *a, **k):
+            env = dict(os.environ)
+            env["LEAN_TEST_RUN_DIR"] = str(run_dir)
+            return [sys.executable, "-c", script], env
+
+        meta = {}
+        with mock.patch.object(lean_run, "build", fake_build):
+            code, _ = lean_run.run("codex", "m", "hi", Path("."), effort="low", meta=meta)
+        self.assertEqual(code, 0)
+        self.assertEqual(meta["usage"], {"input_tokens": 3, "output_tokens": 4})
+        self.assertEqual(meta["rate_limits"], {
+            "5h": 2.0, "week": 21.0,
+            "5h_resets_at": 1791756925, "week_resets_at": 1792307083,
+        })
+        self.assertEqual(meta["engine"], "codex")
+        self.assertEqual(meta["model"], "m")
+        self.assertEqual(meta["effort"], "low")
+        self.assertIsInstance(meta["seconds"], float)
+        self.assertEqual(os.listdir(self.tmp.name), [])
+
+    def test_cursor_meta_copies_result(self):
+        line = '{"type":"result","duration_ms":1234,"usage":{"inputTokens":5}}'
+        meta = {}
+        with mock.patch.object(lean_run, "build", self.fake(f"print({line!r})")):
+            lean_run.run("cursor", "composer-2.5", "x", Path("."), meta=meta)
+        self.assertEqual(meta["duration_ms"], 1234)
+        self.assertEqual(meta["usage"], {"inputTokens": 5})
+        self.assertNotIn("duration_api_ms", meta)
+
+    def test_garbage_stdout_records_seconds(self):
+        meta = {}
+        with mock.patch.object(lean_run, "build", self.fake("print('this is not json')")):
+            code, _ = lean_run.run("codex", "m", "x", Path("."), meta=meta)
+        self.assertEqual(code, 0)
+        self.assertIsInstance(meta["seconds"], float)
+        self.assertEqual(meta["seconds"], round(meta["seconds"], 1))
+        self.assertNotIn("usage", meta)
+        self.assertNotIn("rate_limits", meta)
+
+    def test_cursor_default_timeout(self):
+        self.assertEqual(lean_run.ENGINE_TIMEOUT_S["cursor"], 1500)
+        seen = {}
+
+        class Proc:
+            pid = 1
+
+            def wait(self, timeout=None):
+                seen["timeout"] = timeout
+                return 0
+
+        with mock.patch.object(lean_run, "build", self.fake("pass")), \
+             mock.patch.object(lean_run.subprocess, "Popen", return_value=Proc()):
+            code, _ = lean_run.run("cursor", "m", "x", Path("."), timeout_s=None)
+        self.assertEqual(code, 0)
+        self.assertEqual(seen["timeout"], 1500)
+
 
 if __name__ == "__main__":
     unittest.main()

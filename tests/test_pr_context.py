@@ -1,10 +1,12 @@
 import json
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+import findings  # noqa: E402
 import pr_context  # noqa: E402
 
 FIX = Path(__file__).parent / "fixtures"
@@ -150,6 +152,122 @@ class RiskTest(unittest.TestCase):
                          {"level": "normal", "why": []})
         self.assertEqual(len(pr_context.risk([f"m/migrations/{i}.sql" for i in range(9)])["why"]), 6)
 
+    def test_risk_fix(self):
+        self.assertEqual(pr_context.risk(["supabase/functions/a.ts"])["level"], "normal")
+        self.assertEqual(pr_context.risk(["supabase/tests/001.test.sql"])["level"], "normal")
+        self.assertEqual(pr_context.risk(["supabase/migrations/2026_x.sql"])["level"], "high")
+        self.assertEqual(pr_context.risk(["db/migrations/1.py"])["level"], "high")
+        self.assertEqual(pr_context.risk(["schema.sql"])["level"], "high")
+        self.assertEqual(pr_context.risk(["Tests/seed.sql"])["level"], "normal")
+        self.assertEqual(pr_context.risk(["TEST/x.sql"])["level"], "normal")
+        self.assertEqual(pr_context.risk(["db/Migrations/1.sql"])["level"], "high")
+
+
+class DeltaTest(unittest.TestCase):
+    def test_first_round_when_no_state(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / "checkout"
+            work = Path(d) / "work"
+            path, note = pr_context.delta_diff(root, None, "bbb", work, "o__r", 1)
+            self.assertIsNone(path)
+            self.assertEqual(note, "first round")
+
+    def test_cat_file_failing_twice(self):
+        calls = []
+
+        def fake_run(args, cwd=None, check=True):
+            calls.append(args)
+            if "cat-file" in args:
+                raise RuntimeError("fatal: not a valid object name")
+            return ""
+
+        orig = pr_context.run
+        pr_context.run = fake_run
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                root = Path(d) / "checkout"
+                work = Path(d) / "work"
+                path, note = pr_context.delta_diff(root, "aaa", "bbb", work, "o__r", 1)
+                self.assertIsNone(path)
+                self.assertEqual(note, "last reviewed commit not found (force-push?)")
+        finally:
+            pr_context.run = orig
+
+        self.assertEqual(len([c for c in calls if "cat-file" in c]), 2)
+        self.assertEqual(len([c for c in calls if "fetch" in c]), 1)
+
+    def test_delta_diff_with_prior_state(self):
+        calls = []
+
+        def fake_run(args, cwd=None, check=True):
+            calls.append(args)
+            if "diff" in args:
+                return "diff --git a/x b/x\n+token=ghp_" + "q" * 36 + "\n"
+            return ""
+
+        orig = pr_context.run
+        pr_context.run = fake_run
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                root = Path(d) / "checkout"
+                work = Path(d) / "work"
+                path, note = pr_context.delta_diff(root, "aaa", "bbb", work, "o__r", 1)
+                self.assertIsNone(note)
+                self.assertIsNotNone(path)
+                self.assertTrue(Path(path).is_file())
+                content = Path(path).read_text(encoding="utf-8")
+                self.assertIn("diff --git", content)
+                self.assertNotIn("q" * 36, content)
+                self.assertTrue(any(a[-2:] == ["aaa", "bbb"] for a in calls if "diff" in a))
+        finally:
+            pr_context.run = orig
+
+
+class DigestTest(unittest.TestCase):
+    def test_digest(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / "checkout"
+            work = Path(d) / "work"
+            root.mkdir()
+            work.mkdir()
+            (root / "CLAUDE.md").write_text(("c" * 19 + "\n") * 1000, encoding="utf-8")
+            (root / "AGENTS.md").write_text(("a" * 19 + "\n") * 1000, encoding="utf-8")
+            (root / "ARCHITECTURE.md").write_text(("b" * 19 + "\n") * 1000, encoding="utf-8")
+            docs = ["CLAUDE.md", "ARCHITECTURE.md", "AGENTS.md"]
+            path = pr_context.docs_digest(root, docs, work, "o__r", 1)
+            text = Path(path).read_text(encoding="utf-8")
+
+            # 1. AGENTS.md comes first
+            self.assertTrue(text.startswith("### AGENTS.md\n"))
+
+            # Parse sections:
+            sections = {s.split("\n", 1)[0]: s.split("\n", 1)[1] for s in text.split("### ") if s.strip()}
+
+            # 2. A 20000-char doc is cut to 15000 with the truncation line
+            agents_body = sections["AGENTS.md"]
+            agents_doc, agents_trunc = agents_body.split("[truncated: ")
+            self.assertEqual(len(agents_doc), 15000)
+            self.assertEqual(agents_trunc.strip(), "AGENTS.md has 5000 more chars; open it only if a finding depends on it]")
+
+            # 3. Total never exceeds 40000 plus the truncation lines
+            claude_doc, claude_trunc = sections["CLAUDE.md"].split("[truncated: ")
+            arch_doc, arch_trunc = sections["ARCHITECTURE.md"].split("[truncated: ")
+            self.assertEqual(len(claude_doc), 15000)
+            self.assertEqual(len(arch_doc), 10000)
+            self.assertEqual(len(agents_doc) + len(claude_doc) + len(arch_doc), 40000)
+            self.assertEqual(arch_trunc.strip(), "ARCHITECTURE.md has 10000 more chars; open it only if a finding depends on it]")
+
+    def test_digest_redacts(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / "checkout"
+            work = Path(d) / "work"
+            root.mkdir()
+            work.mkdir()
+            (root / "AGENTS.md").write_text("token=ghp_" + "q" * 36, encoding="utf-8")
+            path = pr_context.docs_digest(root, ["AGENTS.md"], work, "o__r", 1)
+            text = Path(path).read_text(encoding="utf-8")
+            self.assertNotIn("q" * 36, text)
+
 
 class GatherTest(unittest.TestCase):
     """gather() end to end with gh/git mocked: shape of the context JSON."""
@@ -182,6 +300,7 @@ class GatherTest(unittest.TestCase):
             with tempfile.TemporaryDirectory() as d:
                 ctx = pr_context.gather("o/r", 5, Path(d))
                 diff = Path(ctx["diff_file"]).read_text(encoding="utf-8")
+                docs_exists = Path(ctx["docs_digest_file"]).is_file()
         finally:
             pr_context.run = orig
         self.assertEqual(ctx["ci"], "fail")
@@ -194,6 +313,57 @@ class GatherTest(unittest.TestCase):
         self.assertEqual(ctx["behind_base"], 3)
         self.assertEqual(ctx["merge_rules"], [])
         self.assertEqual(ctx["risk"], {"level": "normal", "why": []})
+        self.assertIsNone(ctx["last_reviewed_sha"])
+        self.assertIsNone(ctx["delta_diff_file"])
+        self.assertEqual(ctx["delta_note"], "first round")
+        self.assertTrue(docs_exists)
+
+    def test_gather_with_prior_round(self):
+        view = json.loads((FIX / "pr_view.json").read_text())
+        view["headRefOid"] = "bbb"
+        calls = []
+
+        def fake_run(args, cwd=None, check=True):
+            calls.append(args)
+            if args[:3] == ["gh", "pr", "view"]:
+                return json.dumps(view)
+            if args[:3] == ["gh", "pr", "checks"]:
+                return "[]"
+            if args[:3] == ["gh", "pr", "diff"]:
+                return "diff --git a/x b/x\n+new"
+            if "diff" in args and "aaa" in args:
+                return "diff --git a/x b/x\n+delta"
+            return ""
+
+        with tempfile.TemporaryDirectory() as td:
+            gate_home = Path(td) / "gate_home"
+            state_dir = gate_home / "state"
+            state_dir.mkdir(parents=True)
+            (state_dir / "o__r__5.json").write_text(
+                json.dumps({"repo": "o/r", "pr": 5, "rounds": [{"sha": "aaa", "verdict": "fix"}]}),
+                encoding="utf-8"
+            )
+            old_home = os.environ.get("PR_GATE_HOME")
+            os.environ["PR_GATE_HOME"] = str(gate_home)
+            orig = pr_context.run
+            pr_context.run = fake_run
+            try:
+                work = Path(td) / "work"
+                ctx = pr_context.gather("o/r", 5, work)
+                delta_exists = Path(ctx["delta_diff_file"]).is_file()
+                delta_content = Path(ctx["delta_diff_file"]).read_text(encoding="utf-8")
+            finally:
+                pr_context.run = orig
+                if old_home is None:
+                    os.environ.pop("PR_GATE_HOME", None)
+                else:
+                    os.environ["PR_GATE_HOME"] = old_home
+
+        self.assertEqual(ctx["last_reviewed_sha"], "aaa")
+        self.assertIsNotNone(ctx["delta_diff_file"])
+        self.assertIsNone(ctx["delta_note"])
+        self.assertTrue(delta_exists)
+        self.assertIn("+delta", delta_content)
 
 
 if __name__ == "__main__":
