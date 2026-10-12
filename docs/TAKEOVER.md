@@ -3,48 +3,55 @@
 For the "pr-gate skill" session: opened in the umbrella folder, working only inside `pr-gate/`.
 Read this first, then `AGENTS.md`, `SKILL.md`, and `docs/evals.md` (the evidence for every rule).
 
-## State (2026-10-10)
+## State (2026-10-12) · `main` @ `13eba4a`, clean, pushed
 
-- **Repo:** public, `main` only, gate green (`py -3 -m unittest discover tests`, 72 tests; `claude
-  plugin test mod`, 4 tests). Installed for Claude Code through a junction in
+- **Repo:** public, `main` only. Gate green: `py -3 -m unittest discover tests` (74 tests),
+  `claude plugin test mod` (4). Installed for Claude Code through a junction in
   `~/.claude/skills/pr-gate`, so **this folder must stay on `main`**: every session loads the skill
   from whatever is checked out here. Codex and Cursor get **copies** (Windows and WSL) in
-  `~/.codex/skills/pr-gate` and `~/.cursor/skills/pr-gate`; re-sync them after every change.
-- **Used live** on 6 PRs (`docs/evals.md`, runs 1–6), two of them merged in a mobile-app repo.
+  `~/.codex/skills/pr-gate` and `~/.cursor/skills/pr-gate`; re-sync them after every change (all
+  synced at `13eba4a`).
+- **Used live** on 9 PRs (`docs/evals.md`, runs 1-8 plus an orchestrator PR merged 2026-10-11 after
+  the pattern-fix round). Best catch: a release-blocking workflow bug the writing session missed.
 - **What works end to end:**
-  - waiting for CI as a background process;
-  - context: diff, CI failure excerpts, artifacts, base-branch CI, docs, merge rules, merge
-    triggers, and `risk` (migrations, auth/RLS, workflows, payments);
-  - reviewers: codex, claude, `both` (merged, cross-engine dedup), `subagent`; a high-risk PR
-    auto-escalates (codex medium, claude `opus`);
-  - verified findings with round history; the 3-round cap and escalation;
-  - fix requests to the owner: app `send_message`, or `handoff.py` + the inbox mod (`mod/`) + a PR
-    comment from any host;
-  - the green report; a re-check, then a squash merge pinned to the head SHA; a merge routed
-    through the owner session when the repo's rules forbid outside merges.
-- **Unattended runs:** none. Options are in `docs/automation.md`; enabling any is the user's call.
+  - CI wait in the background; context with diff, CI excerpts, artifacts, base CI, docs, merge
+    rules, merge triggers and `risk` (migrations, auth/RLS, workflows, payments);
+  - reviewers: codex, claude, `both`, `subagent`, and `cursor` (CLI `cursor-agent`; `auto` verified
+    live); a high-risk PR auto-escalates; any single installed tool is enough (same tool, fresh run);
+  - `~/.pr-gate/config.json`: default reviewer, model and effort per engine, high-risk model
+    (the user's: `{"models": {"cursor": "auto"}}`); flags > config > defaults;
+  - `references/engines.md`: per-CLI check, login, one-line test, models, exact command;
+  - one finding per root cause; fix requests ask for the pattern fix (after a PR spent 3 rounds on
+    siblings of one bug);
+  - fix requests: app `send_message`, or `handoff.py` + inbox mod + PR comment; the mod delivered
+    live once (run 6), matched by branch with local git;
+  - green report, re-check, squash merge pinned to the head SHA; merge routed to the owner session
+    when the repo's rules forbid outside merges.
+- **README** is share-ready (readmelyzer pass, 5-step install per tool inside it; `INSTALL.md` for
+  agents). **Unattended runs:** none (`docs/automation.md`; the user's call).
 
-## Decisions (2026-10-07, the user)
+## Decisions (the user)
 
-- The inbox mod is the hand-back channel for hosts without `send_message`, with a status line.
-- `cursor` stays a reviewer, opt-in only (factory decision F4: it carries the account's plugins).
-- No global rule for a PR-body owner marker: branch matching covers it; the marker stays optional.
+- 2026-10-07: inbox mod is the hand-back channel for hosts without `send_message`; cursor opt-in
+  when another engine exists (factory F4); no global PR-body marker rule.
+- 2026-10-11: works with any one tool; preferences in `~/.pr-gate/config.json`; codex stays the
+  first choice over cursor (speed). Auto-merge for low-risk PRs: wanted later, not before more
+  real runs. Vault: `2026-10-11 pr-gate works with any one tool and saves the reviewer choice`.
 
 ## Open items, best first
 
-1. **Cursor is logged out on this PC.** `cursor-agent login` (the user's step), then one timed
-   `review.py --engine cursor` on any PR. It now launches `cursor-agent` (Grok's `agent` shadows
-   the bare name).
-2. **A Codex-hosted run has never happened.** `/pr-gate` from a Codex session on a throwaway PR:
-   proves `handoff.py` + PR comment from a host with no `send_message`, and the inbox mod picking it
-   up in a Claude owner session.
-3. **The inbox mod is installed (2026-10-10)** as a skills-dir plugin: junction
-   `~/.claude/skills/pr-gate-inbox` -> `pr-gate/mod` (open sessions: `/reload-plugins`), plus the
-   user's `CLAUDE_CODE_PLUGIN_DIRS` (wins for new sessions; `claude plugin list` shows the other copy
-   skipped, never both). Mods are early access: re-run `claude plugin validate mod` after a Claude Code update.
-4. **`lean_run.py` lives in this repo.** Move it if a third consumer appears.
-5. **`--all-open`** runs PRs one at a time. Fine until there are many open PRs.
-
+1. **Single-tool paths not proven live:** Codex-only and Cursor-only. The first friend on one is the
+   test; ask for their run output and add it to `docs/evals.md`.
+2. **Inbox mod in a real cross-session hand-back:** in every real run the gate session also owned
+   the PR. Installed as the skills-dir plugin `~/.claude/skills/pr-gate-inbox` -> `pr-gate/mod`
+   (open sessions: `/reload-plugins`), plus the user's `CLAUDE_CODE_PLUGIN_DIRS` (that copy wins in
+   new sessions; never both). Re-run `claude plugin validate mod` after Claude Code updates.
+3. **Watch the pattern rule:** on the next PR with several findings, a round-2 finding that is a
+   sibling of a round-1 finding means the rule isn't working; tighten the prompt.
+4. **Auto-merge for low-risk PRs:** the user wants it after 5-10 more real runs with no reviewer
+   misses. Design it then (risk `normal`, CI green, no findings above low, the repo allows it).
+5. **Docs-only PRs:** consider skipping the review or using the cheapest engine.
+6. `lean_run.py` lives here (move if a third consumer appears); `--all-open` is sequential.
 ## How to test a change
 
 - **Unit:** `py -3 -m unittest discover tests`. No network; `pr_context.run` is mocked.
