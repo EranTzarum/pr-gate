@@ -214,4 +214,15 @@ Measured on real pr-gate runs (repos described by shape only):
 in config that switches away from Codex near its limits (`--ignore-budget` to override); a hard
 round cap with `--extra-round`; Cursor timeout raised to 25 min; a narrower migration risk rule.
 
-**Results after the change:** TBD (live re-run pending).
+**Results after the change** (same merged 18-file app PR, same head commit, isolated state):
+
+| Run | Before | After |
+|---|---|---|
+| Codex, later round (delta diff) | 1,025,189 input (91.8k uncached), ~4 min | 394,935 input (51.6k uncached), 76 s, same verdict |
+| Codex, first round (full diff) | 1,283,936 input (87.4k uncached) | 836,518 input (85.5k uncached), 107 s, one extra low finding |
+| Cursor, later round | killed at 15 min (`auto`, 63 tool calls) | `composer-2.5`, 228 s, green |
+| Cursor, first round | not measured | `composer-2.5`, 128 s, green |
+| Claude (high risk, opus), later round | not measured | 33 s, green |
+
+Later rounds gain most: total input -61%, uncached -44%. A first round still reads the full
+diff, so its uncached input barely moves; the gain there is fewer re-sent steps (-35% total).
