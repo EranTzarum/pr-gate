@@ -8,7 +8,10 @@ Read this first, then `AGENTS.md`, `SKILL.md`, and `docs/evals.md` (the evidence
 - **Cost work (2026-10-12):** usage ledger (`scripts/usage.py`), codex budget switch, round cap
   with `--extra-round`, round-2+ delta diff and docs digest, Cursor 25 min timeout; docs in
   `SKILL.md`, `references/engines.md`, evals section below.
-- **Repo:** public, `main` only. Gate green: `py -3 -m unittest discover tests` (106 tests),
+- **Tiers + agy (2026-10-13):** weighted `tier` score in `pr_context`, `light`/`cheap`/`strong`
+  model picks in `review.py`, Antigravity (`agy`) as a fourth read-only engine; docs in
+  `SKILL.md`, `references/engines.md`, evals "Reviewer tiers".
+- **Repo:** public, `main` only. Gate green: `py -3 -m unittest discover tests` (129 tests),
   `claude plugin test mod` (4). Installed for Claude Code through a junction in
   `~/.claude/skills/pr-gate`, so **this folder must stay on `main`**: every session loads the skill
   from whatever is checked out here. Codex and Cursor get **copies** (Windows and WSL) in
@@ -19,8 +22,9 @@ Read this first, then `AGENTS.md`, `SKILL.md`, and `docs/evals.md` (the evidence
 - **What works end to end:**
   - CI wait in the background; context with diff, CI excerpts, artifacts, base CI, docs, merge
     rules, merge triggers and `risk` (migrations, auth/RLS, workflows, payments);
-  - reviewers: codex, claude, `both`, `subagent`, and `cursor` (CLI `cursor-agent`; `auto` verified
-    live); a high-risk PR auto-escalates; any single installed tool is enough (same tool, fresh run);
+  - reviewers: codex, claude, `both`, `subagent`, `cursor` (CLI `cursor-agent`), and `agy`
+    (Antigravity); tier picks light/cheap/strong models; any single installed tool is enough (same
+    tool, fresh run);
   - `~/.pr-gate/config.json`: default reviewer, model and effort per engine, high-risk model
     (the user's: `{"models": {"cursor": "auto"}}`); flags > config > defaults;
   - `references/engines.md`: per-CLI check, login, one-line test, models, exact command;
@@ -43,19 +47,21 @@ Read this first, then `AGENTS.md`, `SKILL.md`, and `docs/evals.md` (the evidence
 
 ## Open items, best first
 
-1. **Single-tool paths not proven live:** Codex-only and Cursor-only. The first friend on one is the
+1. **Re-check tier threshold after 10 PRs** (`usage.py` totals and whether `strong` rounds missed
+   blockers).
+2. **Single-tool paths not proven live:** Codex-only and Cursor-only. The first friend on one is the
    test; ask for their run output and add it to `docs/evals.md`.
-2. **Inbox mod in a real cross-session hand-back:** in every real run the gate session also owned
+3. **Inbox mod in a real cross-session hand-back:** in every real run the gate session also owned
    the PR. Installed as the skills-dir plugin `~/.claude/skills/pr-gate-inbox` -> `pr-gate/mod`
    (open sessions: `/reload-plugins`), plus the user's `CLAUDE_CODE_PLUGIN_DIRS` (that copy wins in
    new sessions; never both). Re-run `claude plugin validate mod` after Claude Code updates.
-3. **Watch the pattern rule:** on the next PR with several findings, a round-2 finding that is a
+4. **Watch the pattern rule:** on the next PR with several findings, a round-2 finding that is a
    sibling of a round-1 finding means the rule isn't working; tighten the prompt.
-4. **Auto-merge for low-risk PRs:** the user wants it after 5-10 more real runs with no reviewer
+5. **Auto-merge for low-risk PRs:** the user wants it after 5-10 more real runs with no reviewer
    misses. Design it then (risk `normal`, CI green, no findings above low, the repo allows it).
-5. **Docs-only PRs:** consider skipping the review or using the cheapest engine.
-6. `lean_run.py` lives here (move if a third consumer appears); `--all-open` is sequential.
-7. **Verify the cost cut live** (`usage.py` numbers before/after the context and budget changes).
+6. **Docs-only PRs:** consider skipping the review or using the cheapest engine.
+7. `lean_run.py` lives here (move if a third consumer appears); `--all-open` is sequential.
+8. **Verify the cost cut live** (`usage.py` numbers before/after the context and budget changes).
 ## How to test a change
 
 - **Unit:** `py -3 -m unittest discover tests`. No network; `pr_context.run` is mocked.

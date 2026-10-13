@@ -32,11 +32,21 @@ run with `py -3` on Windows (`python3` elsewhere). State lives in
 
 `/pr-gate <owner/repo> <PR#> [--reviewer codex|claude|both|cursor|subagent] [--model M] [--effort E]`
 
-Default models are mid tier (codex `gpt-6.1-sol` at low effort, claude `sonnet`,
-cursor `composer-2.5`). A **high-risk PR** (context `risk.level: high`:
-migrations, auth/RLS, CI workflows, payments) is raised automatically: codex at
-medium effort, claude `opus`. The result carries `escalated`; say so in the
-report. `--model`/`--effort` override it.
+**Reviewer tiers** (`cheap` by default): `light` when the PR changes only docs or
+tests; `strong` when the context tier score is at least `tier_threshold` (default
+5, from weighted added lines and paths), the previous round kept a high or
+blocker finding, or this is the last round before the cap. `review.py` picks the
+model per engine from `MODEL_TIERS` for that level (`references/engines.md`).
+The result JSON has `tier`: `level`, `score`, `why` (e.g. `risk-path+3`,
+`exec/shell+2`). Put one line in every round report and the green report, e.g.
+`tier: strong (score 7: risk-path+3, exec/shell+2, concurrency+1)`. When
+`level` is `strong`, `escalated` repeats the why list; say so in the report.
+`--tier light|cheap|strong` overrides the pick; `--model`/`--effort` still win
+over config.
+
+**Blocked models** (flags and `config.json`): `gpt-6-astra` and `claude-fable-*`
+(cost), `gpt-6-terra` (unavailable on ChatGPT accounts), Cursor `auto` (metered
+wallet). `review.py` refuses them before launching an engine.
 `/pr-gate <owner/repo> --all-open` → `gh pr list -R <repo> --state open --json number,title,isDraft`,
 skip drafts, run the loop for each PR **one after another**.
 
@@ -44,31 +54,36 @@ skip drafts, run the loop for each PR **one after another**.
 another model: `review.py --engine <name>` starts it through `lean_run.py`.
 How to check each one is installed and logged in, the login commands, a
 one-line test and the models: `references/engines.md`. The user's saved
-preferences (default reviewer, model per engine, e.g. cursor `auto`) live in
+preferences (default reviewer, model per engine) live in
 `~/.pr-gate/config.json`; `review.py` applies them, and you write that file
 when the user states a preference.
 
-**Reviewer choice.** Use `--reviewer` if given, else `reviewer` from
-`config.json`. Otherwise ask the user once,
-in one line, offering the default: the *other* model from the host (Claude host
-→ `codex`; Codex host → `claude`; Cursor host → `claude`), if its CLI is
-installed and logged in (`codex --version`, `claude --version`,
-`cursor-agent --version`). **Only one tool installed** → the same tool in a
-fresh read-only run: Claude host → `subagent` (or `claude`); Codex host →
-`codex`; Cursor host → `cursor`. A fresh context still catches what the writer
-missed; a second model family is a bonus, not a requirement. For a high-risk PR,
-offer `both` first (codex and claude on the same prompt, findings merged; a
-cross-engine duplicate within 3 lines is kept once, at the higher severity; if
-one engine fails the result says `partial` and the round still counts). If
-the chosen engine fails (missing CLI, quota, error exit), say so and offer the
-next one; don't silently switch. `subagent` = an Agent-tool subagent in this
-session (Claude Code only): fresh context, same model family.
+**Reviewer choice.** Three CLIs plus `subagent`: `codex`, `claude`, `cursor`.
+Use `--reviewer` if given, else `reviewer` from `config.json`.
+Otherwise ask the user once, in one line, offering the default: the *other*
+model from the host (Claude host → `codex`; Codex host → `claude`; Cursor host
+→ `claude`), if its CLI is installed and logged in (`codex --version`,
+`claude --version`, `cursor-agent --version`). **Only one tool
+installed** → the same tool in a fresh read-only run: Claude host → `subagent`
+(or `claude`); Codex host → `codex`; Cursor host → `cursor`.
+A fresh context still catches what the writer missed; a second model
+family is a bonus, not a requirement. For a **strong** tier when both codex and
+claude work, offer `both` first (same prompt, findings merged; a cross-engine
+duplicate within 3 lines is kept once, at the higher severity; if one engine
+fails the result says `partial` and the round still counts). If the chosen
+engine fails (missing CLI, quota, error exit), say so and offer the next one;
+don't silently switch. `subagent` = an Agent-tool subagent in this session
+(Claude Code only): fresh context, same model family.
 
-`cursor` is opt-in when another engine exists: never offered first then. It
-takes about 160 s to start (measured), 10–25 min for a real review, and always
-carries the Cursor account's plugins and MCP
-tools (mail, calendar, deploy), whatever the sandbox. On a Cursor-only setup it
-is the default; say once that it carries those tools.
+`cursor` is opt-in when another engine exists: never offered first.
+`cursor` takes about 160 s to start (measured), 10–25 min for a real review,
+and carries the Cursor account's plugins and MCP tools. On a Cursor-only setup
+it is the default; say once what it carries (plugins/MCP).
+
+Antigravity (`agy`) is **parked as reviewer**: plan mode stops at the first shell
+command, while sandbox mode can write, so it has no read-only mode that can still
+read files with commands. `lean_run.py agy` still works for other read-only uses
+that do not need to read files with commands; do not pick it as a reviewer or budget fallback.
 
 ## The loop (one PR)
 
@@ -107,12 +122,13 @@ the PR head detached and writes one context JSON (`context_file`):
 ### 3. Review
 
 ```bash
-py -3 <skill>/scripts/review.py <context_file> --engine codex|claude|both|cursor [--model M] [--effort E]
+py -3 <skill>/scripts/review.py <context_file> --engine codex|claude|both|cursor [--model M] [--effort E] [--tier light|cheap|strong]
 ```
 
 Long-running: run it in the background. For `subagent`: run with
 `--prompt-only`, spawn one Agent (general-purpose) whose prompt is the file's
-content plus "Your working directory is <checkout>", save its final answer to
+content plus "Your working directory is <checkout>", on the model the printed
+`tier.level` names (light `haiku`, cheap `sonnet`, strong `opus`), save its final answer to
 a file, then `review.py <context_file> --raw <that file>`.
 
 The result JSON: `summary`, `kept` (verified findings, worst first), `dropped`
@@ -120,14 +136,15 @@ The result JSON: `summary`, `kept` (verified findings, worst first), `dropped`
 `round`, `action`, and `usage` (per engine: `seconds`, token fields under
 `usage`, and for codex `rate_limits` with `5h` / `week` %). Exit 2/3 = no
 usable reviewer output (bad JSON, error, or timeout; codex/claude 15 min,
-cursor 25 min, then the process tree is killed): report it and offer another
-engine. Nothing is recorded, so it does not use up a round. Exit 3 with
+cursor 25 min, then the process tree is killed): report it and offer
+another engine. Nothing is recorded, so it does not use up a round. Exit 3 with
 `error` containing `round cap reached` → stop, tell the owner, and only
 re-run `review.py` with `--extra-round` after they OK it.
 
-**Cost in every report.** From `usage` for the engine that ran, add one line,
-e.g. `cost: 312k in (281k cached), 4 min, Codex 5h 34% / week 61%` (omit
-cached or limits when absent). Totals across runs:
+**Tier and cost in every report.** From `tier` in the result, add the tier line
+(above). From `usage` for the engine that ran, add one line, e.g.
+`cost: 312k in (281k cached), 4 min, Codex 5h 34% / week 61%` (omit cached or
+limits when absent). Totals across runs:
 `py -3 <skill>/scripts/usage.py --since today` (also `5h`, `week`, `all`).
 
 **Budget.** If the result has `budget_switch`, say which engine reviewed
@@ -245,6 +262,7 @@ Plain language, no code reading needed. Reply in the user's language.
 PR <repo>#<N> "<title>" is ready. Reply `merge` to merge it.
 What it does: <summary, 1-2 sentences>
 Checked: CI <pass|no CI>; <engine> review over <k> files, <rounds> round(s); repo docs: <list>.
+tier: <level> (score <n>: <why joined>) | tier: light (docs/tests only)
 cost: <one line from usage, as above>
 Left (low, optional): <one line each, or "none">
 Merging will: <merge into <base>; then <workflow: notable steps> | "trigger no workflows">

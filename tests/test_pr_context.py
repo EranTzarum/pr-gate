@@ -313,6 +313,8 @@ class GatherTest(unittest.TestCase):
         self.assertEqual(ctx["behind_base"], 3)
         self.assertEqual(ctx["merge_rules"], [])
         self.assertEqual(ctx["risk"], {"level": "normal", "why": []})
+        self.assertIn("tier", ctx)
+        self.assertEqual(ctx["tier"]["code_lines"], 0)
         self.assertIsNone(ctx["last_reviewed_sha"])
         self.assertIsNone(ctx["delta_diff_file"])
         self.assertEqual(ctx["delta_note"], "first round")
@@ -364,6 +366,95 @@ class GatherTest(unittest.TestCase):
         self.assertIsNone(ctx["delta_note"])
         self.assertTrue(delta_exists)
         self.assertIn("+delta", delta_content)
+        self.assertIn("tier", ctx)
+
+
+class TierTest(unittest.TestCase):
+    def test_docs_and_tests_only(self):
+        diff = ("+++ b/docs/a.md\n+doc line\n"
+                "+++ b/tests/test_tool.py\n+test line\n"
+                "+++ b/package-lock.json\n+lock line\n")
+        t = pr_context.tier(["docs/a.md", "tests/test_tool.py", "package-lock.json"], diff)
+        self.assertTrue(t["docs_only"])
+        self.assertEqual(t["score"], 0)
+        self.assertEqual(t["code_lines"], 0)
+        self.assertEqual(t["why"], [])
+
+    def test_added_code_categories(self):
+        diff = ("+++ b/bin/tool.py\n"
+                "+os.chmod(p, 0o600)\n"
+                "+subprocess.run(cmd)\n")
+        t = pr_context.tier(["bin/tool.py"], diff, {})
+        self.assertFalse(t["docs_only"])
+        self.assertEqual(t["score"], 4)
+        self.assertEqual(t["code_lines"], 2)
+        self.assertIn("secrets/perms+2", t["why"])
+        self.assertIn("exec/shell+2", t["why"])
+
+    def test_code_in_tests_ignored(self):
+        diff = ("+++ b/tests/test_tool.py\n"
+                "+os.chmod(p, 0o600)\n"
+                "+subprocess.run(cmd)\n")
+        t = pr_context.tier(["tests/test_tool.py"], diff, {})
+        self.assertTrue(t["docs_only"])
+        self.assertEqual(t["score"], 0)
+        self.assertEqual(t["code_lines"], 0)
+        self.assertEqual(t["why"], [])
+
+    def test_migration_path_adds_risk(self):
+        t = pr_context.tier(["supabase/migrations/001.sql"], "")
+        self.assertFalse(t["docs_only"])
+        self.assertIn("risk-path+3", t["why"])
+        self.assertEqual(t["score"], 3)
+
+    def test_big_code_lines_over_1500(self):
+        diff = "+++ b/bin/tool.py\n" + "\n".join("+code_line" for _ in range(1600)) + "\n"
+        t = pr_context.tier(["bin/tool.py"], diff, {})
+        self.assertFalse(t["docs_only"])
+        self.assertEqual(t["code_lines"], 1600)
+        self.assertIn("big+1", t["why"])
+        self.assertEqual(t["score"], 1)
+
+    def test_hotspots(self):
+        with tempfile.TemporaryDirectory() as td:
+            old_home = os.environ.get("PR_GATE_HOME")
+            os.environ["PR_GATE_HOME"] = td
+            try:
+                state_dir = Path(td) / "state"
+                state_dir.mkdir(parents=True)
+                # Two state files of the same repo with high findings in bin/tool.py
+                (state_dir / "o__r__1.json").write_text(json.dumps({
+                    "repo": "o/r", "pr": 1,
+                    "rounds": [{"findings": [{"severity": "high", "file": "bin/tool.py"}]}]
+                }), encoding="utf-8")
+                (state_dir / "o__r__2.json").write_text(json.dumps({
+                    "repo": "o/r", "pr": 2,
+                    "rounds": [{"findings": [{"severity": "high", "file": "bin/tool.py"}]}]
+                }), encoding="utf-8")
+                # Excluded current PR
+                (state_dir / "o__r__5.json").write_text(json.dumps({
+                    "repo": "o/r", "pr": 5,
+                    "rounds": [{"findings": [{"severity": "high", "file": "bin/tool.py"}]}]
+                }), encoding="utf-8")
+                # Another repo's state file
+                (state_dir / "other__r__1.json").write_text(json.dumps({
+                    "repo": "other/r", "pr": 1,
+                    "rounds": [{"findings": [{"severity": "high", "file": "bin/tool.py"}]}]
+                }), encoding="utf-8")
+                # Corrupt file should be skipped without error
+                (state_dir / "o__r__9.json").write_text("{corrupt", encoding="utf-8")
+
+                hot = pr_context.hotspots("o/r", 5)
+                self.assertEqual(hot.get("bin/tool.py"), 2)
+
+                t = pr_context.tier(["bin/tool.py"], "", hot)
+                self.assertIn("hotspot+1", t["why"])
+                self.assertEqual(t["score"], 1)
+            finally:
+                if old_home is None:
+                    os.environ.pop("PR_GATE_HOME", None)
+                else:
+                    os.environ["PR_GATE_HOME"] = old_home
 
 
 if __name__ == "__main__":

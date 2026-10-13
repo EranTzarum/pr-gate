@@ -182,6 +182,104 @@ def risk(files):
     return {"level": "high" if why else "normal", "why": why[:6]}
 
 
+TIER_CATS = {  # name: (weight, regex on ADDED lines of code files)
+    "secrets/perms": (2, r"chmod|0o?600|permission|credential|secret|auth\.json|api[_-]?key|password|private key"),
+    "exec/shell":    (2, r"subprocess|exec(Sync|File)?\(|spawn\(|\bshell\b|eval\(|child_process"),
+    "guards":        (2, r"\bdeny\b|allowlist|denylist|guard|sanitiz|escape|unquote|shlex"),
+    "destructive":   (2, r"\bdrop\b|rmtree|rm -rf|unlink\(|truncate|force[-_ ]push|--force|reset --hard"),
+    "db-security":   (2, r"row level|security definer|\bgrant\b|\brevoke\b|service_role|tenant|auth\.uid"),
+    "concurrency":   (1, r"\block\b|mutex|transaction|for update|idempot|race"),
+    "isolation":     (1, r"cache|session|sign ?out|logout|user_?id"),
+}
+NON_CODE = r"\.md$|^docs/|(^|/)tests?/|\.test\.|_test\.|(^|/)test_|lock(file)?\.|package-lock|\.snap$|\.json$"
+NON_CODE_RE = re.compile(NON_CODE, re.I)
+TIER_CATS_RE = {k: (w, re.compile(rx, re.I)) for k, (w, rx) in TIER_CATS.items()}
+
+
+def hotspots(repo, exclude_pr=None):
+    counts = {}
+    try:
+        state_dir = findings.home() / "state"
+        if not state_dir.is_dir():
+            return counts
+        prefix = findings.key(repo, 0)[:-1]
+        exclude_name = f"{findings.key(repo, int(exclude_pr))}.json" if exclude_pr is not None else None
+        for p in state_dir.iterdir():
+            if not p.is_file() or not p.name.startswith(prefix) or not p.name.endswith(".json"):
+                continue
+            if exclude_name and p.name == exclude_name:
+                continue
+            try:
+                st = json.loads(p.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if not isinstance(st, dict):
+                continue
+            if exclude_pr is not None and st.get("pr") is not None:
+                try:
+                    if int(st["pr"]) == int(exclude_pr):
+                        continue
+                except (ValueError, TypeError):
+                    pass
+            findings_list = []
+            if isinstance(st.get("rounds"), list):
+                for rnd in st["rounds"]:
+                    if isinstance(rnd, dict) and isinstance(rnd.get("findings"), list):
+                        findings_list.extend(rnd["findings"])
+            if not findings_list and isinstance(st.get("findings"), list):
+                findings_list.extend(st["findings"])
+            for it in findings_list:
+                if isinstance(it, dict) and it.get("severity") in ("high", "blocker"):
+                    f = it.get("file")
+                    if f:
+                        fn = re.sub(r":\d+$", "", str(f)).replace("\\", "/")
+                        counts[fn] = counts.get(fn, 0) + 1
+    except Exception:
+        pass
+    return counts
+
+
+def tier(files, diff_text, hot=None):
+    files = files or []
+    docs_only = bool(files) and all(bool(re.search(NON_CODE, (f or "").replace("\\", "/"), re.I)) for f in files)
+    current_file = None
+    is_code_file = False
+    code_lines = []
+    for line in (diff_text or "").splitlines():
+        if line.startswith("+++ b/"):
+            current_file = line[6:].split("\t")[0].strip().strip('"\'')
+            is_code_file = bool(current_file) and not bool(re.search(NON_CODE, current_file.replace("\\", "/"), re.I))
+        elif line.startswith("+++ "):
+            current_file = None
+            is_code_file = False
+        elif line.startswith("+") and not line.startswith("+++"):
+            if is_code_file:
+                code_lines.append(line[1:])
+
+    score = 0
+    why = []
+    if risk(files).get("level") == "high":
+        score += 3
+        why.append("risk-path+3")
+
+    for cat, (weight, pattern) in TIER_CATS.items():
+        rx = pattern if hasattr(pattern, "search") else re.compile(pattern, re.I)
+        if any(rx.search(ln) for ln in code_lines):
+            score += weight
+            why.append(f"{cat}+{weight}")
+
+    if len(code_lines) > 1500:
+        score += 1
+        why.append("big+1")
+
+    hot = hot or {}
+    if any(hot.get((f or "").replace("\\", "/"), 0) >= 2 for f in files):
+        score += 1
+        why.append("hotspot+1")
+
+    return {"score": score, "why": why, "docs_only": docs_only, "code_lines": len(code_lines)}
+
+
 def glob_match(path, pattern):
     """GitHub Actions path glob: ** crosses folders, * does not."""
     rx = ""
@@ -362,7 +460,8 @@ def gather(repo, pr, work):
     except ValueError:
         checks = []
     diff_file = work / f"{safe}__{pr}.diff"
-    diff_file.write_text(redact(run(["gh", "pr", "diff", str(pr), "-R", repo])), encoding="utf-8")
+    diff_text = redact(run(["gh", "pr", "diff", str(pr), "-R", repo]))
+    diff_file.write_text(diff_text, encoding="utf-8")
     logs = []
     for rid in failed_run_ids(checks):
         text = run(["gh", "run", "view", rid, "-R", repo, "--log-failed"], check=False)
@@ -402,6 +501,7 @@ def gather(repo, pr, work):
         "merge_rules": merge_rules(root, docs),
         "merge_triggers": merge_triggers(root, base, files),
         "risk": risk(files),
+        "tier": tier(files, diff_text, hotspots(repo, pr)),
     }
     out = work / f"{safe}__{pr}.json"
     out.write_text(json.dumps(ctx, indent=2), encoding="utf-8")
@@ -422,7 +522,7 @@ def main(argv=None):
                                           "merge_state", "behind_base", "owner", "docs",
                                           "merge_rules", "merge_triggers", "risk", "size",
                                           "last_reviewed_sha", "delta_diff_file", "delta_note",
-                                          "docs_digest_file")}, indent=2))
+                                          "docs_digest_file", "tier")}, indent=2))
     return 0
 
 

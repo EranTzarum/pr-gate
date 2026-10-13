@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import lean_run  # noqa: E402
 
 UNSAFE = {"--force", "--yolo", "acceptEdits", "--dangerously-bypass-approvals-and-sandbox",
-          "workspace-write", "danger-full-access"}
+          "--dangerously-skip-permissions", "workspace-write", "danger-full-access"}
 
 
 class FakeProfile(unittest.TestCase):
@@ -95,6 +95,21 @@ class ClaudeCursorTest(FakeProfile):
         self.assertTrue(any(Path(a).name.lower().startswith("cursor-agent") for a in argv), argv)
         with self.assertRaises(RuntimeError):
             lean_run.build("cursor", "composer-2.5", Path("."), self.run_dir, mcp=["x"])
+
+    def test_agy_plan_and_no_grants(self):
+        argv, _ = lean_run.build("agy", "gemini-3.8-flash-low", Path("."), self.run_dir, effort="high")
+        self.assertEqual(argv[argv.index("--mode") + 1], "plan")
+        self.assertEqual(argv[argv.index("--input-format") + 1], "stream-json")
+        self.assertEqual(argv[argv.index("--output-format") + 1], "stream-json")
+        self.assertNotIn("--dangerously-skip-permissions", argv)
+        self.assertNotIn("high", argv)  # effort lives in the model slug
+        self.assertEqual(lean_run.ENGINE_TIMEOUT_S["agy"], 1200)
+        for kwargs in ({"mcp": ["x"]}, {"skills": ["x"]}):
+            with self.assertRaisesRegex(RuntimeError, "agy runs without grants"):
+                lean_run.build("agy", "m", Path("."), self.run_dir, **kwargs)
+        writing, _ = lean_run.build("agy", "m", Path("."), self.run_dir, write=True)
+        self.assertIn("--dangerously-skip-permissions", writing)
+        self.assertNotIn("--mode", writing)
 
     def test_read_only_flags_everywhere(self):
         for engine in lean_run.ENGINES:
@@ -193,6 +208,59 @@ class RunTest(unittest.TestCase):
         self.assertEqual(meta["seconds"], round(meta["seconds"], 1))
         self.assertNotIn("usage", meta)
         self.assertNotIn("rate_limits", meta)
+
+    def test_agy_ndjson_prompt_and_success(self):
+        script = (
+            "import json,sys\n"
+            "lines=[ln for ln in sys.stdin.read().splitlines() if ln.strip()]\n"
+            "assert len(lines)==1\n"
+            "obj=json.loads(lines[0])\n"
+            "print(json.dumps({'event':'result','result':{"
+            "'status':'SUCCESS','response':obj['message']['content'],"
+            "'duration_seconds':40.1,"
+            "'usage':{'input_tokens':35,'output_tokens':1},"
+            "'denied_actions':['write_file']}}))\n"
+        )
+        meta = {}
+        with mock.patch.object(lean_run, "build", self.fake(script)):
+            code, out = lean_run.run("agy", "gemini-3.8-flash-low", "hello review", Path("."), meta=meta)
+        self.assertEqual(code, 0)
+        self.assertEqual(out, "hello review")
+        self.assertEqual(meta["usage"]["input_tokens"], 35)
+        self.assertEqual(meta["status"], "SUCCESS")
+        self.assertEqual(meta["duration_ms"], 40.1 * 1000)
+        self.assertEqual(meta["denied_actions"], ["write_file"])
+        self.assertEqual(os.listdir(self.tmp.name), [])
+
+    def test_agy_error_is_exit_2(self):
+        line = json.dumps({"event": "result", "result": {
+            "status": "ERROR", "response": "", "error": "invalid model selection: nope"}})
+        meta = {}
+        with mock.patch.object(lean_run, "build", self.fake(f"print({line!r})")):
+            code, out = lean_run.run("agy", "nope", "x", Path("."), meta=meta)
+        self.assertEqual(code, 2)
+        self.assertEqual(out, "invalid model selection: nope")
+        self.assertEqual(meta["status"], "ERROR")
+        self.assertEqual(os.listdir(self.tmp.name), [])
+
+    def test_agy_empty_success_is_exit_2(self):
+        for response in ("", " \n\t", None):
+            for denied in ([], [{"action": "command", "display_name": "RunCommand"}]):
+                with self.subTest(response=response, denied=denied):
+                    line = json.dumps({"event": "result", "result": {
+                        "status": "SUCCESS", "response": response, "denied_actions": denied}})
+                    with mock.patch.object(lean_run, "build", self.fake(f"print({line!r})")):
+                        code, out = lean_run.run("agy", "m", "x", Path("."))
+                    self.assertEqual(code, 2)
+                    self.assertEqual(out, "agy gave no answer" + ("; blocked: command" if denied else ""))
+                    self.assertEqual(os.listdir(self.tmp.name), [])
+
+    def test_agy_missing_result_is_exit_2(self):
+        with mock.patch.object(lean_run, "build", self.fake("print('noise')")):
+            code, out = lean_run.run("agy", "m", "x", Path("."))
+        self.assertEqual(code, 2)
+        self.assertIn("noise", out)
+        self.assertEqual(os.listdir(self.tmp.name), [])
 
     def test_cursor_default_timeout(self):
         self.assertEqual(lean_run.ENGINE_TIMEOUT_S["cursor"], 1500)

@@ -6,7 +6,7 @@
   py -3 review.py <context.json> --raw <reviewer-output-file>      # gate an existing output
 
 Prints the findings.py result JSON: {summary, kept, dropped, verdict, round, action},
-plus `escalated` (high-risk PR, stronger models used) and `partial` (with `both`, the engine
+plus `tier`, `escalated` (strong tier) and `partial` (with `both`, the engine
 that failed).
 """
 import argparse
@@ -27,14 +27,25 @@ from redact import redact  # noqa: E402
 
 PROMPT = HERE.parent / "references" / "review-prompt.md"
 DIFF_MAX_CHARS = 80000
-# Mid tier: enough to read a diff and confirm a file:line. Override with --model/--effort.
-DEFAULT_MODELS = {"codex": ("gpt-6.1-sol", "low"), "claude": ("sonnet", None),
-                  "cursor": ("composer-2.5", None)}
-# A high-risk PR (pr_context.risk) gets a stronger pass unless --model/--effort says otherwise.
-# Evidence: low-effort codex missed a medium edge case (docs/evals.md, run 2).
-RISK_MODELS = {"codex": ("gpt-6.1-sol", "medium"), "claude": ("opus", None),
-               "cursor": ("composer-2.5", None)}
-ENGINES = ("codex", "claude", "cursor", "subagent", "both")
+MODEL_TIERS = {
+    # Luna missed two mediums Sol found on a real PR (2026-10-13); cheap stays Sol-low until Luna is proven.
+    "codex": {"light": ("gpt-6-luna", "low"), "cheap": ("gpt-6.1-sol", "low"),
+              "strong": ("gpt-6.1-sol", "medium")},
+    "claude": {"light": ("haiku", None), "cheap": ("sonnet", None), "strong": ("opus", None)},
+    "cursor": {"light": ("composer-2.5", None), "cheap": ("composer-2.5", None),
+               "strong": ("grok-4.7-high", None)},
+    "agy": {"light": ("gemini-3.8-flash-low", None), "cheap": ("gemini-3.8-flash-medium", None),
+            "strong": ("claude-opus-5-5-medium", None)},
+}
+FORBIDDEN_MODELS = ("gpt-6-astra", "gpt-6-terra", "claude-fable", "auto")
+TIER_THRESHOLD = 5
+DEFAULT_MODELS = {e: tiers["cheap"] for e, tiers in MODEL_TIERS.items()}
+RISK_MODELS = {e: tiers["strong"] for e, tiers in MODEL_TIERS.items()}
+ENGINES = ("codex", "claude", "cursor", "agy", "subagent", "both")
+REVIEW_ENGINES_PARKED = ("agy",)
+PARKED_REASON = ("agy is not available as a reviewer: it has no read-only mode that can still read files "
+                 "(plan mode stops at the first command; sandbox mode can write). "
+                 "Use codex, claude, cursor or subagent.")
 BOTH = ("codex", "claude")
 
 
@@ -85,6 +96,8 @@ def build_prompt(ctx):
 def run_engine(engine, ctx, prompt, out, model=None, effort=None, timeout_s=None, meta=None):
     """Read-only lean run (scripts/lean_run.py): explicit model, no global MCPs,
     skills or hooks."""
+    if engine in REVIEW_ENGINES_PARKED:
+        raise RuntimeError(PARKED_REASON)
     model = model or DEFAULT_MODELS[engine][0]
     effort = effort or DEFAULT_MODELS[engine][1]
     timeout_s = timeout_s if timeout_s is not None else lean_run.ENGINE_TIMEOUT_S[engine]
@@ -118,7 +131,9 @@ def budget_engine(engine, cfg, ignore_budget, extra):
         cap = budget.get(key)
         if val is not None and cap is not None and val >= cap:
             fallback = budget.get("fallback", "cursor")
-            if fallback not in DEFAULT_MODELS or fallback == "codex":
+            if fallback in REVIEW_ENGINES_PARKED:
+                raise RuntimeError(PARKED_REASON)
+            if fallback not in ("claude", "cursor"):
                 raise RuntimeError("budget fallback must be claude or cursor")
             extra["budget_switch"] = {"from": "codex", "to": fallback,
                                       "5h": limits.get("5h"), "week": limits.get("week")}
@@ -129,9 +144,11 @@ def budget_engine(engine, cfg, ignore_budget, extra):
 def load_config():
     """The user's preferences, ~/.pr-gate/config.json (or PR_GATE_HOME). All keys optional:
       {"reviewer": "cursor",                         default --engine
-       "models": {"cursor": "auto"},                 replaces the mid-tier default model
+       "models": {"cursor": "composer-2.5"},         replaces cheap/light defaults
        "effort": {"codex": "low"},
-       "risk_models": {"cursor": "auto"}}            replaces RISK_MODELS for a high-risk PR
+       "risk_models": {"cursor": "grok-4.7-high"},    replaces strong defaults
+       "tier_models": {"strong": {"claude": "opus"}},
+       "tier_threshold": 5}
     A broken file is ignored (and said so), never fatal."""
     p = findings.home() / "config.json"
     if not p.exists():
@@ -144,24 +161,52 @@ def load_config():
         return {}
 
 
-def pick_model(engine, ctx, model=None, effort=None, cfg=None):
-    """Explicit flags win; else the risk table for a high-risk PR; else the mid-tier default.
-    The user's config replaces either table's entry for an engine it names."""
+def tier_level(ctx, cfg, rounds):
+    """Docs/tests use light; score and earlier review history can require strong."""
+    tier = ctx.get("tier") or {}
+    if tier.get("docs_only"):
+        return "light", ["docs/tests only"]
+    why = []
+    if "tier" in ctx:
+        threshold = cfg.get("tier_threshold", TIER_THRESHOLD)
+        if tier.get("score", 0) >= threshold:
+            why.extend(tier.get("why") or [f"tier score >= {threshold}"])
+    elif (ctx.get("risk") or {}).get("level") == "high":
+        why.extend(ctx["risk"].get("why") or ["high-risk PR"])
+    earlier = [r for r in rounds if r["sha"] != ctx.get("head_sha")]
+    if earlier and any(f.get("severity") in ("high", "blocker")
+                       for f in earlier[-1].get("findings", [])):
+        why.append("previous round found high/blocker")
+    if len({r["sha"] for r in earlier}) == findings.MAX_ROUNDS - 1:
+        why.append("last round before cap")
+    return ("strong", why) if why else ("cheap", [])
+
+
+def pick_model(engine, ctx, model=None, effort=None, cfg=None, level=None):
+    """Flags > tier config > legacy config > tier defaults; blocked models always fail."""
     cfg = cfg or {}
-    base = (cfg.get("models", {}).get(engine, DEFAULT_MODELS[engine][0]),
-            cfg.get("effort", {}).get(engine, DEFAULT_MODELS[engine][1]))
-    if model or effort:
-        return model or base[0], effort or base[1]
-    if (ctx.get("risk") or {}).get("level") == "high":
-        own = cfg.get("risk_models", {}).get(engine)
-        if own:
-            return own, base[1]
-        # no stronger tier for this engine: keep the user's choice rather than undo it
-        return base if RISK_MODELS[engine] == DEFAULT_MODELS[engine] else RISK_MODELS[engine]
-    return base
+    level = level or tier_level(ctx, cfg, [])[0]
+    picked_model, picked_effort = MODEL_TIERS[engine][level]
+    own = cfg.get("tier_models", {}).get(level, {}).get(engine)
+    if own is None:
+        own = cfg.get("risk_models" if level == "strong" else "models", {}).get(engine)
+    if isinstance(own, str):
+        picked_model = own
+    elif own is not None:
+        picked_model, picked_effort = own
+    if level != "strong":
+        picked_effort = cfg.get("effort", {}).get(engine, picked_effort)
+    picked_model = model if model is not None else picked_model
+    picked_effort = effort if effort is not None else picked_effort
+    for forbidden in FORBIDDEN_MODELS:
+        if (picked_model == forbidden if forbidden == "auto" else picked_model.startswith(forbidden)):
+            reason = {"gpt-6-astra": "too expensive", "gpt-6-terra": "unavailable on a ChatGPT account",
+                      "claude-fable": "too expensive", "auto": "bills a metered wallet"}[forbidden]
+            raise RuntimeError(f"model {picked_model} is blocked: {reason}")
+    return picked_model, picked_effort
 
 
-def run_both(ctx, prompt, stem, model=None, effort=None, cfg=None, ignore_budget=False, extra=None):
+def run_both(ctx, prompt, stem, model=None, effort=None, cfg=None, ignore_budget=False, extra=None, level=None):
     """codex and claude on the same prompt; findings tagged by engine and merged into one
     raw file (findings.verify drops cross-engine duplicates). One engine failing is
     reported as partial; both failing raises."""
@@ -176,7 +221,7 @@ def run_both(ctx, prompt, stem, model=None, effort=None, cfg=None, ignore_budget
         out = stem.parent / f"{stem.name}.{ctx['head_sha'][:8]}.{engine}.out"
         try:
             picked = pick_model(engine, ctx, model if engine == requested else None,
-                                effort if engine == requested else None, cfg)
+                                effort if engine == requested else None, cfg, level)
             run_engine(engine, ctx, prompt, out, *picked, meta=extra.setdefault("usage", {}).setdefault(engine, {}))
             got = findings.extract(out.read_text(encoding="utf-8", errors="replace"))
         except (RuntimeError, ValueError, subprocess.TimeoutExpired, FileNotFoundError) as e:
@@ -197,6 +242,7 @@ def main(argv=None):
     ap.add_argument("--engine", choices=ENGINES)
     ap.add_argument("--model")
     ap.add_argument("--effort")
+    ap.add_argument("--tier", choices=("light", "cheap", "strong"))
     ap.add_argument("--raw", help="gate an existing reviewer output instead of running an engine")
     ap.add_argument("--prompt-only", action="store_true")
     ap.add_argument("--ignore-budget", action="store_true", help="run codex despite configured usage limits")
@@ -204,23 +250,32 @@ def main(argv=None):
     a = ap.parse_args(argv)
     ctx = json.loads(Path(a.context).read_text(encoding="utf-8-sig"))  # tolerate a BOM (PowerShell edits)
     stem = Path(a.context).with_suffix("")
-    if not a.raw and not a.extra_round:
-        rounds = findings.load(ctx["repo"], ctx["pr"])["rounds"]
-        if sum(r["sha"] != ctx["head_sha"] for r in rounds) >= findings.MAX_ROUNDS:
-            print(redact(json.dumps({"error": f"round cap reached ({findings.MAX_ROUNDS}); ask the owner, then re-run with --extra-round",
-                                     "repo": ctx["repo"], "pr": ctx["pr"], "sha": ctx["head_sha"]})))
-            return 3
-    prompt = build_prompt(ctx)
+    rounds = findings.load(ctx["repo"], ctx["pr"])["rounds"]
     cfg = load_config()
     a.engine = a.engine or (None if a.raw else cfg.get("reviewer"))
     if a.engine and a.engine not in ENGINES:
         ap.error(f"config reviewer {a.engine!r} is not one of {', '.join(ENGINES)}")
+    if a.engine in REVIEW_ENGINES_PARKED:
+        print(json.dumps({"error": PARKED_REASON, "engine": a.engine}))
+        return 3
+    level, why = tier_level(ctx, cfg, rounds)
+    if a.tier:
+        level, why = a.tier, [f"--tier {a.tier}"]
+    extra = {"tier": {"level": level, "score": (ctx.get("tier") or {}).get("score", 0), "why": why}}
+    if level == "strong":
+        extra["escalated"] = why
+    if not a.raw and not a.extra_round:
+        if len({r["sha"] for r in rounds if r["sha"] != ctx["head_sha"]}) >= findings.MAX_ROUNDS:
+            print(redact(json.dumps(dict(extra,
+                error=f"round cap reached ({findings.MAX_ROUNDS}); ask the owner, then re-run with --extra-round",
+                repo=ctx["repo"], pr=ctx["pr"], sha=ctx["head_sha"]))))
+            return 3
+    prompt = build_prompt(ctx)
     if a.prompt_only or a.engine == "subagent" and not a.raw:
         pf = stem.parent / (stem.name + ".prompt.md")
         pf.write_text(prompt, encoding="utf-8")
-        print(json.dumps({"prompt_file": str(pf), "checkout": ctx["checkout"]}))
+        print(json.dumps(dict(extra, prompt_file=str(pf), checkout=ctx["checkout"])))
         return 0
-    extra = {}
     if a.raw:
         raw = Path(a.raw)
     else:
@@ -230,20 +285,18 @@ def main(argv=None):
             ap.error("--model names one engine's model; not with --engine both")
         try:
             if a.engine == "both":
-                raw, failed = run_both(ctx, prompt, stem, a.model, a.effort, cfg, a.ignore_budget, extra)
+                raw, failed = run_both(ctx, prompt, stem, a.model, a.effort, cfg, a.ignore_budget, extra, level)
                 if failed:
                     extra["partial"] = failed
             else:
                 engine = budget_engine(a.engine, cfg, a.ignore_budget, extra)
                 raw = stem.parent / f"{stem.name}.{ctx['head_sha'][:8]}.{engine}.out"
                 picked = pick_model(engine, ctx, a.model if engine == a.engine else None,
-                                    a.effort if engine == a.engine else None, cfg)
+                                    a.effort if engine == a.engine else None, cfg, level)
                 run_engine(engine, ctx, prompt, raw, *picked, meta=extra.setdefault("usage", {}).setdefault(engine, {}))
         except (RuntimeError, subprocess.TimeoutExpired, FileNotFoundError) as e:
             print(redact(json.dumps(dict(extra, error=str(e)[:800], engine=a.engine))))
             return 3
-        if not (a.model or a.effort) and (ctx.get("risk") or {}).get("level") == "high":
-            extra["escalated"] = ctx["risk"]["why"]
     buf = io.StringIO()
     with redirect_stdout(buf):
         rc = findings.main(["check", "--raw", str(raw), "--root", ctx["checkout"], "--ci", ctx["ci"],

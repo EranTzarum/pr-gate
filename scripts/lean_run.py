@@ -4,6 +4,7 @@ unless granted for this run. Same pattern as an orchestrator's worker sandboxes.
   py -3 lean_run.py codex  --model gpt-6.1-sol --effort low  --cwd DIR < prompt.txt
   py -3 lean_run.py claude --model sonnet --cwd DIR --mcp my-db < prompt.txt
   py -3 lean_run.py cursor --model composer-2.5 --cwd DIR < prompt.txt
+  py -3 lean_run.py agy    --model gemini-3.8-flash-low --cwd DIR < prompt.txt
 
 Read-only by default (--write lifts it). Prints the engine's stdout; exit 3 on
 timeout (process tree killed), else the engine's exit code.
@@ -18,6 +19,7 @@ Measured 2026-10-04, one-line prompt:
          The CLI fetches the Cursor account's plugins and MCP servers from the
          server whatever HOME is, so a sandbox buys nothing: cursor runs on the
          real profile and carries those tools. Opt-in only.
+  agy    startup ~48s, ~35k tokens fixed, read-only via --mode plan.
 The global skills dir (~/.agents/skills) still leaks: HOME is not redirected.
 """
 import argparse
@@ -30,9 +32,9 @@ import tempfile
 import time
 from pathlib import Path
 
-ENGINES = ("codex", "claude", "cursor")
+ENGINES = ("codex", "claude", "cursor", "agy")
 DEFAULT_TIMEOUT_S = 900
-ENGINE_TIMEOUT_S = {"codex": 900, "claude": 900, "cursor": 1500}
+ENGINE_TIMEOUT_S = {"codex": 900, "claude": 900, "cursor": 1500, "agy": 1200}
 # A lean CODEX_HOME holds only these.
 CODEX_KEEP = ("auth.json", "installation_id")
 WIN = sys.platform.startswith("win")
@@ -134,6 +136,14 @@ def build(engine, model, cwd, run_dir, effort=None, write=False, mcp=(), skills=
         # `cursor-agent`, not `agent`: other CLIs (Grok's) also install an `agent` that can come first on PATH.
         argv = [_exe("cursor-agent"), "-p", "--model", model, "--trust", "--output-format", "json",
                 "--workspace", str(cwd)] + ([] if write else ["--mode", "ask"])
+    elif engine == "agy":
+        if mcp or skills:
+            raise RuntimeError("agy runs without grants")
+        # effort is in the model slug. --mode plan is read-only; our timeout replaces --print-timeout.
+        mode = ["--dangerously-skip-permissions"] if write else ["--mode", "plan"]
+        argv = [_exe("agy"), "--model", model, *mode, "--add-dir", str(cwd),
+                "--disable-slash-commands", "--print=",
+                "--input-format", "stream-json", "--output-format", "stream-json"]
     else:
         raise ValueError(engine)
     return _wrap(argv), env
@@ -201,6 +211,28 @@ def _codex_meta(stdout, run_dir):
     return usage if usage is not None else fallback, limits
 
 
+def _agy_result(stdout):
+    """Last stream-json result object, or None."""
+    found = None
+    for obj in _json_dicts(stdout):
+        if obj.get("event") == "result" and isinstance(obj.get("result"), dict):
+            found = obj["result"]
+    return found
+
+
+def _agy_stdout(code, stdout):
+    """Callers see the review text. ERROR, empty answers and missing results become exit 2."""
+    res = _agy_result(stdout)
+    if res and res.get("status") == "SUCCESS":
+        text = res.get("response")
+        if isinstance(text, str) and text.strip():
+            return code, text
+        blocked = [a["action"] for a in res.get("denied_actions", []) if isinstance(a, dict) and a.get("action")]
+        return 2, "agy gave no answer" + ("; blocked: " + ", ".join(blocked) if blocked else "")
+    err = res.get("error") if res else None
+    return 2, err if isinstance(err, str) and err else stdout
+
+
 def _take(meta, text, keys):
     for obj in _json_dicts(text):
         for k in keys:
@@ -223,6 +255,19 @@ def _fill_meta(meta, engine, model, effort, seconds, stdout, run_dir):
         _take(meta, stdout, ("duration_ms", "duration_api_ms", "usage"))
     elif engine == "claude":
         _take(meta, stdout, ("usage", "total_cost_usd", "duration_ms"))
+    elif engine == "agy":
+        res = _agy_result(stdout)
+        if not res:
+            return
+        if isinstance(res.get("usage"), dict):
+            meta["usage"] = res["usage"]
+        secs = res.get("duration_seconds")
+        if isinstance(secs, (int, float)):
+            meta["duration_ms"] = secs * 1000
+        if "status" in res:
+            meta["status"] = res["status"]
+        if "denied_actions" in res:
+            meta["denied_actions"] = res["denied_actions"]
 
 
 def run(engine, model, prompt, cwd, effort=None, write=False, mcp=(), skills=(),
@@ -239,7 +284,11 @@ def run(engine, model, prompt, cwd, effort=None, write=False, mcp=(), skills=(),
     run_dir = Path(tempfile.mkdtemp(prefix=f"{engine}-", dir=base))
     try:
         argv, env = build(engine, model, cwd, run_dir, effort, write, mcp, skills)
-        (run_dir / "prompt.txt").write_text(prompt, encoding="utf-8")
+        body = prompt
+        if engine == "agy":
+            # one NDJSON line; --input-format text rejects stdin as an empty prompt
+            body = json.dumps({"event": "user", "message": {"role": "user", "content": prompt}}) + "\n"
+        (run_dir / "prompt.txt").write_text(body, encoding="utf-8")
         out_path = run_dir / "out.txt"
         with open(run_dir / "prompt.txt", "rb") as fin, open(out_path, "wb") as fout:
             t0 = time.monotonic()
@@ -257,6 +306,8 @@ def run(engine, model, prompt, cwd, effort=None, write=False, mcp=(), skills=(),
                 _fill_meta(meta, engine, model, effort, time.monotonic() - t0, stdout, run_dir)
             except Exception:
                 pass
+        if engine == "agy" and code != 3:
+            code, stdout = _agy_stdout(code, stdout)
         return code, stdout
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)  # holds a credential copy: never leave it behind

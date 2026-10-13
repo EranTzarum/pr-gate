@@ -67,7 +67,7 @@ class EngineDefaultsTest(unittest.TestCase):
         env.start()
         self.addCleanup(env.stop)
 
-    def test_defaults_are_explicit_mid_tier(self):
+    def test_defaults_are_explicit_cheap_tier(self):
         seen = {}
 
         def fake_run(engine, model, prompt, cwd, effort=None, timeout_s=None, meta=None):
@@ -83,12 +83,28 @@ class EngineDefaultsTest(unittest.TestCase):
                 _, ctx = make_ctx(d)
                 for engine in ("codex", "claude", "cursor"):
                     review.run_engine(engine, ctx, "p", Path(d) / f"{engine}.out")
+                self.assertEqual(seen["codex"], ("gpt-6.1-sol", "low"))
                 review.run_engine("codex", ctx, "p", Path(d) / "x.out", model="gpt-6-luna", effort="medium")
         finally:
             review.lean_run.run = orig
         self.assertEqual(seen["claude"], ("sonnet", None))
         self.assertEqual(seen["cursor"], ("composer-2.5", None))
+        self.assertEqual(review.DEFAULT_MODELS["agy"], ("gemini-3.8-flash-medium", None))
         self.assertEqual(seen["codex"], ("gpt-6-luna", "medium"))  # override wins
+
+    def test_agy_is_parked_and_other_engines_keep_prompt(self):
+        with tempfile.TemporaryDirectory(dir=WORKTREE) as d:
+            _, ctx = make_ctx(d)
+            prompt = review.build_prompt(ctx)
+            with patch.object(review.lean_run, "run", return_value=(0, "{}")) as run:
+                with self.assertRaisesRegex(RuntimeError, "not available as a reviewer"):
+                    review.run_engine("agy", ctx, prompt, Path(d) / "agy.out")
+                run.assert_not_called()
+                self.assertFalse(Path(d, "agy.out").exists())
+                for engine in ("codex", "claude", "cursor"):
+                    review.run_engine(engine, ctx, prompt, Path(d) / f"{engine}.out")
+                    self.assertEqual(run.call_args.args[2], prompt)
+                    self.assertIn("Get-Content -Raw -Encoding utf8", run.call_args.args[2])
 
     def test_timeout_is_reported(self):
         orig = review.lean_run.run
@@ -119,11 +135,11 @@ class RiskTest(unittest.TestCase):
         self.assertEqual(review.pick_model("claude", hi, model="sonnet"), ("sonnet", None))
 
     def test_user_config_wins_over_defaults(self):
-        cfg = {"models": {"cursor": "auto"}, "effort": {"codex": "medium"}}
-        self.assertEqual(review.pick_model("cursor", {}, cfg=cfg), ("auto", None))
-        self.assertEqual(review.pick_model("codex", {}, cfg=cfg), ("gpt-6.1-sol", "medium"))
+        cfg = {"models": {"cursor": "custom-model"}, "effort": {"codex": "high"}}
+        self.assertEqual(review.pick_model("cursor", {}, cfg=cfg), ("custom-model", None))
+        self.assertEqual(review.pick_model("codex", {}, cfg=cfg), ("gpt-6.1-sol", "high"))
         hi = {"risk": {"level": "high", "why": ["auth: a"]}}
-        self.assertEqual(review.pick_model("cursor", hi, cfg=cfg), ("auto", None))  # no stronger cursor tier: keep theirs
+        self.assertEqual(review.pick_model("cursor", hi, cfg=cfg), ("grok-4.7-high", None))
         self.assertEqual(review.pick_model("claude", hi, cfg=cfg), ("opus", None))
         self.assertEqual(review.pick_model("cursor", {}, model="composer-2.5", cfg=cfg), ("composer-2.5", None))
 
@@ -138,7 +154,7 @@ class RiskTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory(dir=WORKTREE) as d:
             ctx_file, _ = make_ctx(d, ci="pass")
-            Path(d, "config.json").write_text('{"reviewer": "cursor", "models": {"cursor": "auto"}}', encoding="utf-8")
+            Path(d, "config.json").write_text('{"reviewer": "cursor", "models": {"cursor": "custom-model"}}', encoding="utf-8")
             orig = review.lean_run.run
             review.lean_run.run = fake_run
             os.environ["PR_GATE_HOME"] = d
@@ -150,7 +166,7 @@ class RiskTest(unittest.TestCase):
             finally:
                 review.lean_run.run = orig
                 del os.environ["PR_GATE_HOME"]
-        self.assertEqual((rc, seen["call"]), (0, ("cursor", "auto")))
+        self.assertEqual((rc, seen["call"]), (0, ("cursor", "custom-model")))
 
     def test_risk_in_prompt(self):
         with tempfile.TemporaryDirectory(dir=WORKTREE) as d:
@@ -162,6 +178,77 @@ class RiskTest(unittest.TestCase):
             finally:
                 del os.environ["PR_GATE_HOME"]
         self.assertIn("High-risk PR. Touches: auth: src/auth/x.ts", text)
+
+
+class TierTest(unittest.TestCase):
+    def test_score_selects_models_for_every_engine(self):
+        expected = {
+            "cheap": {"codex": ("gpt-6.1-sol", "low"), "claude": ("sonnet", None),
+                      "cursor": ("composer-2.5", None), "agy": ("gemini-3.8-flash-medium", None)},
+            "strong": {"codex": ("gpt-6.1-sol", "medium"), "claude": ("opus", None),
+                       "cursor": ("grok-4.7-high", None), "agy": ("claude-opus-5-5-medium", None)},
+        }
+        for score, level in ((0, "cheap"), (4, "cheap"), (5, "strong")):
+            ctx = {"tier": {"score": score, "docs_only": False, "why": ["risk-path+3", "sql+2"]}}
+            with self.subTest(score=score):
+                self.assertEqual(review.tier_level(ctx, {}, [])[0], level)
+                for engine, model in expected[level].items():
+                    self.assertEqual(review.pick_model(engine, ctx), model)
+        self.assertEqual(review.DEFAULT_MODELS, expected["cheap"])
+        self.assertEqual(review.RISK_MODELS, expected["strong"])
+
+    def test_docs_only_stays_light_even_with_history(self):
+        ctx = {"tier": {"score": 10, "docs_only": True}, "head_sha": "head"}
+        rounds = [{"sha": "a"}, {"sha": "b", "findings": [finding(severity="blocker")]}]
+        self.assertEqual(review.tier_level(ctx, {}, rounds)[0], "light")
+        self.assertEqual(review.pick_model("codex", ctx), ("gpt-6-luna", "low"))
+        self.assertEqual(review.pick_model("claude", ctx), ("haiku", None))
+
+    def test_history_uses_last_different_head_and_distinct_shas(self):
+        ctx = {"head_sha": "head", "tier": {"score": 0}}
+        for severity in ("high", "blocker"):
+            rounds = [{"sha": "a", "findings": [finding(severity=severity)]}, {"sha": "head"}]
+            self.assertEqual(review.tier_level(ctx, {}, rounds),
+                             ("strong", ["previous round found high/blocker"]))
+        rounds = [{"sha": "a", "findings": [finding(severity="blocker")]}, {"sha": "b"}]
+        self.assertEqual(review.tier_level(ctx, {}, rounds), ("strong", ["last round before cap"]))
+        self.assertEqual(review.tier_level(ctx, {}, [{"sha": "a"}, {"sha": "a"}])[0], "cheap")
+        self.assertEqual(review.tier_level(ctx, {}, [{"sha": "a"}, {"sha": "b"}, {"sha": "a"}])[0], "strong")
+
+    def test_threshold_and_old_context(self):
+        ctx = {"tier": {"score": 5}, "risk": {"level": "high"}}
+        self.assertEqual(review.tier_level(ctx, {"tier_threshold": 6}, [])[0], "cheap")
+        self.assertEqual(review.tier_level({"risk": {"level": "high"}}, {}, [])[0], "strong")
+
+    def test_config_and_flag_precedence(self):
+        cfg = {"tier_models": {"strong": {"agy": "gemini-3.1-pro-high",
+                                         "codex": ["custom-tier", "high"]}},
+               "risk_models": {"codex": "custom-risk"}, "models": {"codex": "custom-cheap"},
+               "effort": {"codex": "low"}}
+        self.assertEqual(review.pick_model("agy", {}, cfg=cfg, level="strong"), ("gemini-3.1-pro-high", None))
+        self.assertEqual(review.pick_model("codex", {}, cfg=cfg, level="strong"), ("custom-tier", "high"))
+        self.assertEqual(review.pick_model("codex", {}, "explicit", "medium", cfg, "strong"),
+                         ("explicit", "medium"))
+        del cfg["tier_models"]
+        self.assertEqual(review.pick_model("codex", {}, cfg=cfg, level="strong"), ("custom-risk", "medium"))
+        for level in ("cheap", "light"):
+            self.assertEqual(review.pick_model("codex", {}, cfg=cfg, level=level), ("custom-cheap", "low"))
+        cfg["tier_models"] = {"light": {"codex": ["custom-light", "high"]}}
+        self.assertEqual(review.pick_model("codex", {}, cfg=cfg, level="light"), ("custom-light", "low"))
+
+    def test_blocked_models_apply_to_flags_and_config(self):
+        for model in ("gpt-6-astra", "gpt-6-astra-preview", "gpt-6-terra", "claude-fable-5-1", "auto"):
+            with self.subTest(model=model):
+                with self.assertRaisesRegex(RuntimeError, f"model {model} is blocked:"):
+                    review.pick_model("codex", {}, model=model)
+        for cfg, level in (({"models": {"cursor": "auto"}}, "cheap"),
+                           ({"risk_models": {"cursor": "claude-fable-5-1"}}, "strong"),
+                           ({"tier_models": {"light": {"cursor": ["gpt-6-terra", None]}}}, "light")):
+            with self.assertRaisesRegex(RuntimeError, "blocked"):
+                review.pick_model("cursor", {}, cfg=cfg, level=level)
+        self.assertEqual(review.pick_model("cursor", {}, model="automatic"), ("automatic", None))
+        self.assertEqual(review.pick_model("cursor", {}, model="composer-2.5",
+                                           cfg={"models": {"cursor": "auto"}}), ("composer-2.5", None))
 
 
 class BothTest(unittest.TestCase):
@@ -294,7 +381,7 @@ class ReviewCostTest(unittest.TestCase):
     def config_budget(self, fallback="cursor"):
         (self.home / "config.json").write_text(json.dumps({
             "budget": {"codex_5h_max_pct": 80, "codex_week_max_pct": 90, "fallback": fallback},
-            "models": {"cursor": "auto"}}), encoding="utf-8")
+            "models": {"cursor": "composer-2.5"}}), encoding="utf-8")
 
     def seed_rounds(self, shas):
         for sha in shas:
@@ -338,6 +425,7 @@ class ReviewCostTest(unittest.TestCase):
     def test_usage_output_log_and_timeouts(self):
         rc, out = self.run_main("--engine", "codex")
         self.assertEqual(rc, 0)
+        self.assertEqual(out["tier"], {"level": "cheap", "score": 0, "why": []})
         self.assertEqual(out["usage"]["codex"]["seconds"], 2.5)
         records = [json.loads(line) for line in (self.home / "usage.jsonl").read_text(encoding="utf-8").splitlines()]
         self.assertEqual(len(records), 1)
@@ -347,12 +435,61 @@ class ReviewCostTest(unittest.TestCase):
         self.run_main("--engine", "cursor")
         self.assertEqual(self.calls[-1][3], review.lean_run.ENGINE_TIMEOUT_S["cursor"])
 
+    def test_tier_override_and_strong_both_models(self):
+        self.ctx["tier"] = {"score": 5, "why": ["risk-path+3", "sql+2"]}
+        self.context_file.write_text(json.dumps(self.ctx), encoding="utf-8")
+        rc, out = self.run_main("--engine", "both")
+        self.assertEqual(rc, 0)
+        self.assertEqual([c[:3] for c in self.calls],
+                         [("codex", "gpt-6.1-sol", "medium"), ("claude", "opus", None)])
+        self.assertEqual(out["tier"]["level"], "strong")
+        self.assertEqual(out["escalated"], out["tier"]["why"])
+        _, out = self.run_main("--engine", "codex", "--tier", "cheap")
+        self.assertEqual(self.calls[-1][:3], ("codex", "gpt-6.1-sol", "low"))
+        self.assertEqual(out["tier"]["level"], "cheap")
+        self.assertNotIn("escalated", out)
+
+    def test_agy_engine_is_parked_before_prompt_or_run(self):
+        for args in (("--engine", "agy"), ("--engine", "agy", "--prompt-only")):
+            with self.subTest(args=args), patch.object(review, "build_prompt") as prompt:
+                rc, out = self.run_main(*args)
+                self.assertEqual(rc, 3)
+                self.assertEqual(out, {"error": review.PARKED_REASON, "engine": "agy"})
+                self.assertIn("not available as a reviewer", out["error"])
+                prompt.assert_not_called()
+                self.runner.assert_not_called()
+
+    def test_config_agy_reviewer_is_parked(self):
+        (self.home / "config.json").write_text('{"reviewer": "agy"}', encoding="utf-8")
+        rc, out = self.run_main()
+        self.assertEqual(rc, 3)
+        self.assertEqual(out, {"error": review.PARKED_REASON, "engine": "agy"})
+        self.runner.assert_not_called()
+
+    def test_agy_budget_fallback_is_parked(self):
+        self.config_budget(fallback="agy")
+        self.seed_rounds(["old1", "old2"])
+        for engine in ("codex", "both"):
+            with self.subTest(engine=engine), patch.object(review.usage, "last_limits", return_value={"5h": 85}):
+                rc, out = self.run_main("--engine", engine)
+                self.assertEqual(rc, 3)
+                self.assertEqual(out["error"], review.PARKED_REASON)
+                self.assertEqual(out["tier"]["why"], ["last round before cap"])
+                self.assertNotIn("budget_switch", out)
+                self.runner.assert_not_called()
+
+    def test_blocked_model_never_launches_engine(self):
+        rc, out = self.run_main("--engine", "codex", "--model", "gpt-6-astra")
+        self.assertEqual(rc, 3)
+        self.assertIn("blocked", out["error"])
+        self.assertEqual(self.calls, [])
+
     def test_budget_switch_uses_fallback_model_even_with_explicit_model(self):
         self.config_budget()
         with patch.object(review.usage, "last_limits", return_value={"5h": 85, "week": 20}):
             rc, out = self.run_main("--engine", "codex", "--model", "gpt-6-luna", "--effort", "high")
         self.assertEqual(rc, 0)
-        self.assertEqual(self.calls[0][:3], ("cursor", "auto", None))
+        self.assertEqual(self.calls[0][:3], ("cursor", "composer-2.5", None))
         self.assertEqual(out["budget_switch"], {"from": "codex", "to": "cursor", "5h": 85, "week": 20})
         self.assertEqual(set(out["usage"]), {"cursor"})
 

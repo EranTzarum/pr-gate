@@ -226,3 +226,25 @@ round cap with `--extra-round`; Cursor timeout raised to 25 min; a narrower migr
 
 Later rounds gain most: total input -61%, uncached -44%. A first round still reads the full
 diff, so its uncached input barely moves; the gain there is fewer re-sent steps (-35% total).
+
+## Reviewer tiers, 2026-10-13
+
+Backtest on 25 real PRs (repos by shape only: a mobile-app repo, an orchestrator repo, a
+project-template repo). PR size alone predicted serious findings poorly: one 138-line change
+had a blocker. With the weighted change score in context and `tier_threshold` 5, every PR
+that later kept a high or blocker finding scored `strong`, and 4 of 15 others did (all four
+had medium findings). Caveat: small sample; re-check the threshold after 10 more PRs with
+`usage.py`.
+
+**Live check (same 32-file app PR, its first-round commit):**
+
+- The score put it at `strong` (13: risk path, secrets/perms, exec/shell, destructive, DB security,
+  concurrency, isolation), so it would get `gpt-6.1-sol` medium / `opus` / `grok-4.7-high`.
+- `gpt-6-luna` (medium), tried as the cheap Codex model: 54 s, 269k input, one medium finding, but not
+  the two mediums `gpt-6.1-sol` had found at that commit. Cheap Codex therefore stays `gpt-6.1-sol` low;
+  `gpt-6-luna` is used only for docs/tests PRs.
+- `gpt-6-terra` is refused on a ChatGPT account; Gemini 3.1 Pro is not offered to agy on this account.
+- agy as a reviewer: `--mode plan` stopped at the first shell command (Gemini 3.8 Flash and Claude
+  Opus via agy both tried one, even when told not to), so no review came back; `--sandbox` with
+  permissions skipped can read but also wrote a file when asked. Parked as a reviewer until agy has a
+  read-only mode that can still read files.
