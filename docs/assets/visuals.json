@@ -2,28 +2,30 @@
   "palette": { "dark": "#052E16", "mid": "#14532D", "soft": "#86efac", "prompt": "#4ade80" },
   "demo": {
     "title": "pr-gate · owner/repo#12",
-    "aria": "Terminal: pr-gate reviews PR 12 in two rounds, then asks you to reply merge",
+    "aria": "Terminal: pr-gate picks a cheap reviewer tier, reviews PR 12 in two rounds, then asks you to reply merge",
     "rows": [
       { "t": 0.4, "text": "{b:$ }/pr-gate owner/repo 12" },
-      { "t": 1.6, "text": "{m:round 1}  CI pass  claude  {o:[high]} cart.py:8  percent not bounded: 150% gives a refund" },
-      { "t": 2.5, "text": "{m:         ↳ fix request sent to the owner session, owner pushes}" },
-      { "t": 4.2, "text": "{m:round 2}  CI pass  claude  {g:clean}" },
+      { "t": 1.2, "text": "{m:tier}     cheap (score 2: concurrency+1, isolation+1) → claude sonnet" },
+      { "t": 2.2, "text": "{m:round 1}  CI pass  claude  {o:[high]} cart.py:8  percent not bounded: 150% gives a refund" },
+      { "t": 3.0, "text": "{m:         ↳ fix request sent to the owner session, owner pushes}" },
+      { "t": 4.6, "text": "{m:round 2}  CI pass  claude  {g:clean}   {m:(reviewed only the new change)}" },
       null,
-      { "t": 6.0, "text": "PR owner/repo#12 \"Add discount helper\" is ready. Reply {b:`merge`} to merge it." },
-      { "t": 6.8, "text": "{p:Checked:} CI pass; claude review over 3 files, 2 rounds; repo docs" },
-      { "t": 7.4, "text": "{p:Left (low, optional):} cart.py:3, MAX_ITEMS defined but never enforced" },
-      { "t": 8.0, "text": "{p:Merging will:} merge into main; then deploy.yml: npx supabase db push --linked" }
+      { "t": 6.2, "text": "PR owner/repo#12 \"Add discount helper\" is ready. Reply {b:`merge`} to merge it." },
+      { "t": 6.9, "text": "{p:Checked:} CI pass; claude review over 3 files, 2 rounds; repo docs" },
+      { "t": 7.4, "text": "{p:cost:} 214k in (180k cached), 3 min" },
+      { "t": 7.9, "text": "{p:Left (low, optional):} cart.py:3, MAX_ITEMS defined but never enforced" },
+      { "t": 8.4, "text": "{p:Merging will:} merge into main; then deploy.yml: npx supabase db push --linked" }
     ]
   },
   "cards": [
-    { "color": "#16A34A", "title": "Fresh eyes", "icon": "search", "lines": ["A reviewer that didn't write", "the code checks it against", "the repo's own docs,", "after CI."] },
+    { "color": "#16A34A", "title": "Fresh eyes", "icon": "search", "lines": ["A reviewer that didn't write", "the code, on a model sized", "to the change's risk,", "after CI."] },
     { "color": "#0891B2", "title": "No messenger work", "icon": "mail", "lines": ["Fix requests go back to the", "session that owns the", "branch, for up to 3 rounds."] },
     { "color": "#F59E0B", "title": "Your call", "icon": "shield", "lines": ["Nothing merges without your", "literal merge reply, for", "that PR, after the green", "report."] }
   ],
   "stats": [
-    { "n": "74", "label": "tests passing" },
+    { "n": "129", "label": "tests passing" },
     { "n": "3", "label": "rounds max per PR" },
-    { "n": "1–5 min", "label": "per review round" },
-    { "n": "8", "label": "real PRs measured" }
+    { "n": "−61%", "label": "Codex input, later rounds" },
+    { "n": "25", "label": "real PRs reviewed" }
   ]
 }

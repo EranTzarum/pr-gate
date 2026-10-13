@@ -26,7 +26,7 @@ Read this first, then `AGENTS.md`, `SKILL.md`, and `docs/evals.md` (the evidence
     (Antigravity); tier picks light/cheap/strong models; any single installed tool is enough (same
     tool, fresh run);
   - `~/.pr-gate/config.json`: default reviewer, model and effort per engine, high-risk model
-    (the user's: `{"models": {"cursor": "auto"}}`); flags > config > defaults;
+    (the user's: cursor `composer-2.5` + a Codex budget); flags > config > defaults;
   - `references/engines.md`: per-CLI check, login, one-line test, models, exact command;
   - one finding per root cause; fix requests ask for the pattern fix (after a PR spent 3 rounds on
     siblings of one bug);

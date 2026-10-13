@@ -20,7 +20,7 @@ A skill that reviews each pull request, sends the fixes back to the session that
 
 <br>
 
-<img src="docs/assets/stats.svg" alt="74 tests passing, 3 rounds max per PR, 1 to 5 minutes per review round, 8 real PRs measured" width="860">
+<img src="docs/assets/stats.svg" alt="129 tests passing, 3 rounds max per PR, 61% less Codex input in later rounds, 25 real PRs reviewed" width="860">
 
 </div>
 
@@ -28,7 +28,7 @@ A skill that reviews each pull request, sends the fixes back to the session that
 **After:** you type `/pr-gate owner/repo 12`, then answer one word: `merge`.
 
 <p align="center">
-  <img src="docs/assets/cards.svg" alt="Fresh eyes: a reviewer that didn't write the code checks it against the repo's own docs, after CI. No messenger work: fix requests go back to the session that owns the branch, for up to 3 rounds. Your call: nothing merges without your literal merge reply." width="860">
+  <img src="docs/assets/cards.svg" alt="Fresh eyes: a reviewer that didn't write the code, on a model sized to the change's risk, checks it after CI. No messenger work: fix requests go back to the session that owns the branch, for up to 3 rounds. Your call: nothing merges without your literal merge reply." width="860">
 </p>
 
 ## Quick start
@@ -59,16 +59,30 @@ When a round comes back clean, you get this instead:
 ```text
 PR owner/repo#12 "Add discount helper" is ready. Reply `merge` to merge it.
 What it does: adds bounded percentage discounts and cart totals.
-Checked: CI pass; claude review over 3 files, 2 rounds; repo docs: CLAUDE.md, AGENTS.md.
+Checked: CI pass; claude review over 3 files, 2 rounds; repo docs: AGENTS.md.
+tier: cheap (score 2: concurrency+1, isolation+1)
+cost: 214k in (180k cached), 3 min
 Left (low, optional): cart.py:3, MAX_ITEMS defined but never enforced.
 Merging will: merge into main; then deploy.yml: npx supabase db push --linked
 ```
 
-Measured on its first eight real pull requests: [what it caught, how fast, what it costs](docs/evals.md#what-it-did-in-practice). See what your reviews cost: `py -3 scripts/usage.py --since today` (`python3` elsewhere; also `5h`, `week`, `all`).
+Measured on real pull requests: [what it caught, how fast, what it costs](docs/evals.md#what-it-did-in-practice).
+
+## Spends where it matters
+
+- **The model follows the risk:**
+  - docs and tests get the lightest model;
+  - ordinary changes get a cheap one;
+  - a PR that touches auth, migrations, secrets, shell commands or deletes gets the strong one.
+- **Rounds 2+ re-read only what changed:** Codex used 61% fewer tokens on a real PR.
+- **Every review logs its cost.** See it with `python3 scripts/usage.py --since today` (`py -3` on Windows).
+- **A budget in config hands work from Codex to Cursor** before your limits run out.
+
+Details: [docs/reviewers.md](docs/reviewers.md).
 
 ## Install by hand
 
-Pick the tool you use (Claude Code, Codex, Cursor, or Antigravity's `agy` CLI). Any one of them is enough: with a single tool, the reviewer is that same tool in a fresh, read-only run. A fresh context is what catches the writer's blind spots; a second model family is a bonus.
+Pick the tool you use (Claude Code, Codex or Cursor). Any one of them is enough: with a single tool, the reviewer is that same tool in a fresh, read-only run. A fresh context is what catches the writer's blind spots; a second model family is a bonus.
 
 **Needs:** [`gh`](https://cli.github.com) logged in (`gh auth login`), Python 3, `git`.
 
@@ -94,14 +108,14 @@ On Windows, `~` is `%USERPROFILE%`. Using two of these tools? Clone it once and 
 |---|---|---|---|
 | Codex | `codex login status` | `codex login` | `echo "Reply with exactly: ok" \| python3 ~/.claude/skills/pr-gate/scripts/lean_run.py codex --model gpt-6.1-sol --cwd .` |
 | Claude | `claude auth status` | `claude auth login` | same, with `claude --model sonnet` |
-| Cursor | `cursor-agent status` | `cursor-agent login` | same, with `cursor --model auto` (slow to start: up to ~3 min) |
+| Cursor | `cursor-agent status` | `cursor-agent login` | same, with `cursor --model composer-2.5` (slow to start: about 3 min) |
 
 Use the skill folder you cloned into in the test command. Use `cursor-agent`, not `agent`: other tools install an `agent` command too. More (models, what each one runs): [references/engines.md](references/engines.md).
 
-**4. Optional: save your preference** in `~/.pr-gate/config.json`, or just tell the agent *"review with Cursor on the auto model"* and it writes it:
+**4. Optional: save your preference** in `~/.pr-gate/config.json`, or just tell the agent *"review with Codex, and switch to Cursor when Codex is 80% used"* and it writes it:
 
 ```json
-{ "reviewer": "cursor", "models": { "cursor": "auto" } }
+{ "reviewer": "codex", "budget": { "codex_5h_max_pct": 80, "codex_week_max_pct": 90, "fallback": "cursor" } }
 ```
 
 **5. Run it** in a session inside your repo:
@@ -120,14 +134,15 @@ The optional inbox mod (Claude Code only, delivers fix requests to the session t
 - **Never** pushes, changes repo settings, turns on auto-merge, or uses `--admin`.
 - Every script's output is **redacted**: tokens, JWTs, keys and URL passwords are masked before anything is printed, stored or sent.
 - **Reviewers are read-only**, and a test enforces it.
-- **3 rounds per PR**, kept in `~/.pr-gate/state`.
+- **3 rounds per PR**, kept in `~/.pr-gate/state` and enforced: a 4th round needs your OK.
+- **Never picks the priciest models**: `gpt-6-astra`, `claude-fable-*` and Cursor `auto` are refused, even from config.
 
 ## More
 
 | Read | For |
 |---|---|
 | [docs/how-it-decides.md](docs/how-it-decides.md) | Why a fresh reviewer, when it stops for you, severities, what gets dropped |
-| [docs/reviewers.md](docs/reviewers.md) | Pick a reviewer, high-risk PRs, lean runs, the standalone launcher |
+| [docs/reviewers.md](docs/reviewers.md) | Pick a reviewer, model tiers and the change score, what a review costs, lean runs |
 | [docs/evals.md](docs/evals.md) | What it did in practice, and the live runs |
 | [docs/automation.md](docs/automation.md) | Running it unattended: not enabled; compares a local poll, a GitHub Action and a webhook, and recommends a 30-minute local poll after a few weeks of on-demand use |
 | [docs/repo-map.md](docs/repo-map.md) | Every file and what it does |
