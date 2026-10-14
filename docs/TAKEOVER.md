@@ -62,6 +62,14 @@ Read this first, then `AGENTS.md`, `SKILL.md`, and `docs/evals.md` (the evidence
 6. **Docs-only PRs:** consider skipping the review or using the cheapest engine.
 7. `lean_run.py` lives here (move if a third consumer appears); `--all-open` is sequential.
 8. **Verify the cost cut live** (`usage.py` numbers before/after the context and budget changes).
+9. **Waiting on the factory (agreed 2026-10-14):** crew is adopting the same model/effort ladder
+   (its F15 plan). Two pieces pr-gate will use once the factory sends them:
+   - a shared seats data file (engine, model, pool, tier, last ping) with a sync check, so the two
+     ladders can't drift;
+   - a machine-wide usage file (agy and Cursor headroom), so the budget can also spend scarce
+     allowance that would reset unused.
+   Nothing to do until the factory sends the path and format.
+
 ## How to test a change
 
 - **Unit:** `py -3 -m unittest discover tests`. No network; `pr_context.run` is mocked.
