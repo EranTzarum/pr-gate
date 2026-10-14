@@ -31,16 +31,17 @@ MODEL_TIERS = {
     # Each engine climbs one model per tier (small -> mid -> top); critical keeps the top model
     # and raises effort. Codex: gpt-6-terra is refused on ChatGPT accounts, so the mid step is
     # gpt-6-sol. Cursor and agy carry effort in the slug.
-    "codex": {"light": ("gpt-6-luna", "low"), "cheap": ("gpt-6-sol", "medium"),
+    # Light already means the small model; low effort on top of it saves little and risks misses.
+    "codex": {"light": ("gpt-6-luna", "medium"), "cheap": ("gpt-6-sol", "medium"),
               "strong": ("gpt-6.1-sol", "medium"), "critical": ("gpt-6.1-sol", "high")},
-    "claude": {"light": ("haiku", "low"), "cheap": ("sonnet", "medium"),
+    "claude": {"light": ("haiku", "medium"), "cheap": ("sonnet", "medium"),
                "strong": ("opus", "medium"), "critical": ("opus", "high")},
     "cursor": {"light": ("composer-2.5", None), "cheap": ("composer-2.5", None),
                "strong": ("grok-4.7-high", None), "critical": ("grok-4.7-xhigh", None)},
     # agy bills two pools: Gemini (generous) and Claude/GPT (scarce, drains fast), like Cursor's
     # included bucket vs metered wallet. Gemini on every tier; Claude only at "critical", and
     # only Sonnet. Opus via agy is never picked automatically (--model or tier_models only).
-    "agy": {"light": ("gemini-3.8-flash-low", None), "cheap": ("gemini-3.8-flash-medium", None),
+    "agy": {"light": ("gemini-3.8-flash-medium", None), "cheap": ("gemini-3.8-flash-medium", None),
             "strong": ("gemini-3.8-flash-high", None), "critical": ("claude-sonnet-5-5-medium", None)},
 }
 for _tiers in MODEL_TIERS.values():

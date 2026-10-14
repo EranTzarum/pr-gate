@@ -20,8 +20,8 @@ Each PR gets a tier, and the tier picks the model:
 
 | Engine | Light (docs/tests only) | Cheap (default) | Strong | Critical |
 |---|---|---|---|---|
-| codex | `gpt-6-luna`, low | `gpt-6-sol`, medium | `gpt-6.1-sol`, medium | `gpt-6.1-sol`, high |
-| claude / subagent | `haiku`, low | `sonnet`, medium | `opus`, medium | `opus`, high |
+| codex | `gpt-6-luna`, medium | `gpt-6-sol`, medium | `gpt-6.1-sol`, medium | `gpt-6.1-sol`, high |
+| claude / subagent | `haiku`, medium | `sonnet`, medium | `opus`, medium | `opus`, high |
 | cursor | `composer-2.5` | `composer-2.5` | `grok-4.7-high` | `grok-4.7-xhigh` |
 
 **Critical** applies when the score is 10+ or the previous round found a blocker. It keeps the top model and raises its effort.

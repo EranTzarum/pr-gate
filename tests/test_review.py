@@ -216,8 +216,8 @@ class TierTest(unittest.TestCase):
         ctx = {"tier": {"score": 10, "docs_only": True}, "head_sha": "head"}
         rounds = [{"sha": "a"}, {"sha": "b", "findings": [finding(severity="blocker")]}]
         self.assertEqual(review.tier_level(ctx, {}, rounds)[0], "light")
-        self.assertEqual(review.pick_model("codex", ctx), ("gpt-6-luna", "low"))
-        self.assertEqual(review.pick_model("claude", ctx), ("haiku", "low"))
+        self.assertEqual(review.pick_model("codex", ctx), ("gpt-6-luna", "medium"))
+        self.assertEqual(review.pick_model("claude", ctx), ("haiku", "medium"))
 
     def test_history_uses_last_different_head_and_distinct_shas(self):
         ctx = {"head_sha": "head", "tier": {"score": 0}}

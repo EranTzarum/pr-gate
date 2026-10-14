@@ -51,10 +51,10 @@ Exit 3 means it timed out and was killed; any other non-zero exit with an
 
 | Engine | light | cheap (default) | strong | critical |
 |---|---|---|---|---|
-| codex | `gpt-6-luna`, effort `low` | `gpt-6-sol`, effort `medium` | `gpt-6.1-sol`, effort `medium` | `gpt-6.1-sol`, effort `high` |
-| claude | `haiku`, effort `low` | `sonnet`, effort `medium` | `opus`, effort `medium` | `opus`, effort `high` |
+| codex | `gpt-6-luna`, effort `medium` | `gpt-6-sol`, effort `medium` | `gpt-6.1-sol`, effort `medium` | `gpt-6.1-sol`, effort `high` |
+| claude | `haiku`, effort `medium` | `sonnet`, effort `medium` | `opus`, effort `medium` | `opus`, effort `high` |
 | cursor | `composer-2.5` | `composer-2.5` | `grok-4.7-high` | `grok-4.7-xhigh` |
-| agy (parked as reviewer) | `gemini-3.8-flash-low` | `gemini-3.8-flash-medium` | `gemini-3.8-flash-high` | `claude-sonnet-5-5-medium` |
+| agy (parked as reviewer) | `gemini-3.8-flash-medium` | `gemini-3.8-flash-medium` | `gemini-3.8-flash-high` | `claude-sonnet-5-5-medium` |
 
 - Each engine climbs one model per tier: small, then mid, then top. Effort is part of every seat:
   a flag for codex and claude, and part of the model name for cursor and agy.
