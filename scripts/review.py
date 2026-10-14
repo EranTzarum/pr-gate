@@ -28,12 +28,15 @@ from redact import redact  # noqa: E402
 PROMPT = HERE.parent / "references" / "review-prompt.md"
 DIFF_MAX_CHARS = 80000
 MODEL_TIERS = {
-    # Luna missed two mediums Sol found on a real PR (2026-10-13); cheap stays Sol-low until Luna is proven.
-    "codex": {"light": ("gpt-6-luna", "low"), "cheap": ("gpt-6.1-sol", "low"),
-              "strong": ("gpt-6.1-sol", "medium")},
-    "claude": {"light": ("haiku", None), "cheap": ("sonnet", None), "strong": ("opus", None)},
+    # Each engine climbs one model per tier (small -> mid -> top); critical keeps the top model
+    # and raises effort. Codex: gpt-6-terra is refused on ChatGPT accounts, so the mid step is
+    # gpt-6-sol. Cursor and agy carry effort in the slug.
+    "codex": {"light": ("gpt-6-luna", "low"), "cheap": ("gpt-6-sol", "medium"),
+              "strong": ("gpt-6.1-sol", "medium"), "critical": ("gpt-6.1-sol", "high")},
+    "claude": {"light": ("haiku", "low"), "cheap": ("sonnet", "medium"),
+               "strong": ("opus", "medium"), "critical": ("opus", "high")},
     "cursor": {"light": ("composer-2.5", None), "cheap": ("composer-2.5", None),
-               "strong": ("grok-4.7-high", None)},
+               "strong": ("grok-4.7-high", None), "critical": ("grok-4.7-xhigh", None)},
     # agy bills two pools: Gemini (generous) and Claude/GPT (scarce, drains fast), like Cursor's
     # included bucket vs metered wallet. Gemini on every tier; Claude only at "critical", and
     # only Sonnet. Opus via agy is never picked automatically (--model or tier_models only).

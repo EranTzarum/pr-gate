@@ -43,7 +43,8 @@ The result JSON has `tier`: `level`, `score`, `why` (e.g. `risk-path+3`,
 `level` is `strong` or `critical`, `escalated` repeats the why list; say so in the report.
 
 `critical` (score at least `critical_threshold`, default 10, or a blocker in the
-previous round) only changes agy, which has two pools. Its Gemini models are
+previous round) keeps each engine's top model at a higher effort. For agy it
+also switches pools. agy has two pools: its Gemini models are
 generous; its Claude/GPT models draw a small separate allowance. So agy stays on
 Gemini up to strong, and goes to Claude Sonnet medium at critical. It never goes
 to Opus by itself. Cursor is the same idea: stay on included models, because the
@@ -136,7 +137,7 @@ py -3 <skill>/scripts/review.py <context_file> --engine codex|claude|both|cursor
 Long-running: run it in the background. For `subagent`: run with
 `--prompt-only`, spawn one Agent (general-purpose) whose prompt is the file's
 content plus "Your working directory is <checkout>", on the model the printed
-`tier.level` names (light `haiku`, cheap `sonnet`, strong `opus`), save its final answer to
+`tier.level` names (light `haiku`, cheap `sonnet`, strong and critical `opus`), save its final answer to
 a file, then `review.py <context_file> --raw <that file>`.
 
 The result JSON: `summary`, `kept` (verified findings, worst first), `dropped`

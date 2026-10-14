@@ -83,11 +83,11 @@ class EngineDefaultsTest(unittest.TestCase):
                 _, ctx = make_ctx(d)
                 for engine in ("codex", "claude", "cursor"):
                     review.run_engine(engine, ctx, "p", Path(d) / f"{engine}.out")
-                self.assertEqual(seen["codex"], ("gpt-6.1-sol", "low"))
+                self.assertEqual(seen["codex"], ("gpt-6-sol", "medium"))
                 review.run_engine("codex", ctx, "p", Path(d) / "x.out", model="gpt-6-luna", effort="medium")
         finally:
             review.lean_run.run = orig
-        self.assertEqual(seen["claude"], ("sonnet", None))
+        self.assertEqual(seen["claude"], ("sonnet", "medium"))
         self.assertEqual(seen["cursor"], ("composer-2.5", None))
         self.assertEqual(review.DEFAULT_MODELS["agy"], ("gemini-3.8-flash-medium", None))
         self.assertEqual(seen["codex"], ("gpt-6-luna", "medium"))  # override wins
@@ -129,18 +129,18 @@ class RiskTest(unittest.TestCase):
     def test_high_risk_escalates_unless_flags_given(self):
         hi = {"risk": {"level": "high", "why": ["migration: a.sql"]}}
         self.assertEqual(review.pick_model("codex", hi), ("gpt-6.1-sol", "medium"))
-        self.assertEqual(review.pick_model("claude", hi), ("opus", None))
-        self.assertEqual(review.pick_model("codex", {}), ("gpt-6.1-sol", "low"))
+        self.assertEqual(review.pick_model("claude", hi), ("opus", "medium"))
+        self.assertEqual(review.pick_model("codex", {}), ("gpt-6-sol", "medium"))
         self.assertEqual(review.pick_model("codex", hi, effort="low"), ("gpt-6.1-sol", "low"))
-        self.assertEqual(review.pick_model("claude", hi, model="sonnet"), ("sonnet", None))
+        self.assertEqual(review.pick_model("claude", hi, model="sonnet"), ("sonnet", "medium"))
 
     def test_user_config_wins_over_defaults(self):
         cfg = {"models": {"cursor": "custom-model"}, "effort": {"codex": "high"}}
         self.assertEqual(review.pick_model("cursor", {}, cfg=cfg), ("custom-model", None))
-        self.assertEqual(review.pick_model("codex", {}, cfg=cfg), ("gpt-6.1-sol", "high"))
+        self.assertEqual(review.pick_model("codex", {}, cfg=cfg), ("gpt-6-sol", "high"))
         hi = {"risk": {"level": "high", "why": ["auth: a"]}}
         self.assertEqual(review.pick_model("cursor", hi, cfg=cfg), ("grok-4.7-high", None))
-        self.assertEqual(review.pick_model("claude", hi, cfg=cfg), ("opus", None))
+        self.assertEqual(review.pick_model("claude", hi, cfg=cfg), ("opus", "medium"))
         self.assertEqual(review.pick_model("cursor", {}, model="composer-2.5", cfg=cfg), ("composer-2.5", None))
 
     def test_config_file_sets_default_engine(self):
@@ -183,9 +183,9 @@ class RiskTest(unittest.TestCase):
 class TierTest(unittest.TestCase):
     def test_score_selects_models_for_every_engine(self):
         expected = {
-            "cheap": {"codex": ("gpt-6.1-sol", "low"), "claude": ("sonnet", None),
+            "cheap": {"codex": ("gpt-6-sol", "medium"), "claude": ("sonnet", "medium"),
                       "cursor": ("composer-2.5", None), "agy": ("gemini-3.8-flash-medium", None)},
-            "strong": {"codex": ("gpt-6.1-sol", "medium"), "claude": ("opus", None),
+            "strong": {"codex": ("gpt-6.1-sol", "medium"), "claude": ("opus", "medium"),
                        "cursor": ("grok-4.7-high", None), "agy": ("gemini-3.8-flash-high", None)},
         }
         for score, level in ((0, "cheap"), (4, "cheap"), (5, "strong")):
@@ -202,9 +202,9 @@ class TierTest(unittest.TestCase):
         self.assertEqual(review.tier_level(ctx, {}, [])[0], "critical")
         self.assertEqual(review.tier_level(ctx, {"critical_threshold": 11}, [])[0], "strong")
         self.assertEqual(review.pick_model("agy", ctx), ("claude-sonnet-5-5-medium", None))
-        # other engines have no separate critical seat: same as strong
-        self.assertEqual(review.pick_model("codex", ctx), ("gpt-6.1-sol", "medium"))
-        self.assertEqual(review.pick_model("claude", ctx), ("opus", None))
+        # other engines keep their top model at critical and raise effort
+        self.assertEqual(review.pick_model("codex", ctx), ("gpt-6.1-sol", "high"))
+        self.assertEqual(review.pick_model("claude", ctx), ("opus", "high"))
         # agy never picks a Claude model below critical, and never Opus on its own
         for level in ("light", "cheap", "strong"):
             self.assertTrue(review.MODEL_TIERS["agy"][level][0].startswith("gemini-"))
@@ -217,7 +217,7 @@ class TierTest(unittest.TestCase):
         rounds = [{"sha": "a"}, {"sha": "b", "findings": [finding(severity="blocker")]}]
         self.assertEqual(review.tier_level(ctx, {}, rounds)[0], "light")
         self.assertEqual(review.pick_model("codex", ctx), ("gpt-6-luna", "low"))
-        self.assertEqual(review.pick_model("claude", ctx), ("haiku", None))
+        self.assertEqual(review.pick_model("claude", ctx), ("haiku", "low"))
 
     def test_history_uses_last_different_head_and_distinct_shas(self):
         ctx = {"head_sha": "head", "tier": {"score": 0}}
@@ -456,11 +456,11 @@ class ReviewCostTest(unittest.TestCase):
         rc, out = self.run_main("--engine", "both")
         self.assertEqual(rc, 0)
         self.assertEqual([c[:3] for c in self.calls],
-                         [("codex", "gpt-6.1-sol", "medium"), ("claude", "opus", None)])
+                         [("codex", "gpt-6.1-sol", "medium"), ("claude", "opus", "medium")])
         self.assertEqual(out["tier"]["level"], "strong")
         self.assertEqual(out["escalated"], out["tier"]["why"])
         _, out = self.run_main("--engine", "codex", "--tier", "cheap")
-        self.assertEqual(self.calls[-1][:3], ("codex", "gpt-6.1-sol", "low"))
+        self.assertEqual(self.calls[-1][:3], ("codex", "gpt-6-sol", "medium"))
         self.assertEqual(out["tier"]["level"], "cheap")
         self.assertNotIn("escalated", out)
 
