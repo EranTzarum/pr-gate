@@ -34,11 +34,17 @@ MODEL_TIERS = {
     "claude": {"light": ("haiku", None), "cheap": ("sonnet", None), "strong": ("opus", None)},
     "cursor": {"light": ("composer-2.5", None), "cheap": ("composer-2.5", None),
                "strong": ("grok-4.7-high", None)},
+    # agy bills two pools: Gemini (generous) and Claude/GPT (scarce, drains fast), like Cursor's
+    # included bucket vs metered wallet. Gemini on every tier; Claude only at "critical", and
+    # only Sonnet. Opus via agy is never picked automatically (--model or tier_models only).
     "agy": {"light": ("gemini-3.8-flash-low", None), "cheap": ("gemini-3.8-flash-medium", None),
-            "strong": ("claude-opus-5-5-medium", None)},
+            "strong": ("gemini-3.8-flash-high", None), "critical": ("claude-sonnet-5-5-medium", None)},
 }
+for _tiers in MODEL_TIERS.values():
+    _tiers.setdefault("critical", _tiers["strong"])  # only agy has a separate critical seat
 FORBIDDEN_MODELS = ("gpt-6-astra", "gpt-6-terra", "claude-fable", "auto")
 TIER_THRESHOLD = 5
+CRITICAL_THRESHOLD = 10  # score; a blocker in the previous round is critical too
 DEFAULT_MODELS = {e: tiers["cheap"] for e, tiers in MODEL_TIERS.items()}
 RISK_MODELS = {e: tiers["strong"] for e, tiers in MODEL_TIERS.items()}
 ENGINES = ("codex", "claude", "cursor", "agy", "subagent", "both")
@@ -174,11 +180,15 @@ def tier_level(ctx, cfg, rounds):
     elif (ctx.get("risk") or {}).get("level") == "high":
         why.extend(ctx["risk"].get("why") or ["high-risk PR"])
     earlier = [r for r in rounds if r["sha"] != ctx.get("head_sha")]
-    if earlier and any(f.get("severity") in ("high", "blocker")
-                       for f in earlier[-1].get("findings", [])):
+    last = earlier[-1].get("findings", []) if earlier else []
+    if any(f.get("severity") in ("high", "blocker") for f in last):
         why.append("previous round found high/blocker")
     if len({r["sha"] for r in earlier}) == findings.MAX_ROUNDS - 1:
         why.append("last round before cap")
+    critical = ("tier" in ctx and tier.get("score", 0) >= cfg.get("critical_threshold", CRITICAL_THRESHOLD)) \
+        or any(f.get("severity") == "blocker" for f in last)
+    if critical:
+        return "critical", why
     return ("strong", why) if why else ("cheap", [])
 
 
@@ -189,12 +199,12 @@ def pick_model(engine, ctx, model=None, effort=None, cfg=None, level=None):
     picked_model, picked_effort = MODEL_TIERS[engine][level]
     own = cfg.get("tier_models", {}).get(level, {}).get(engine)
     if own is None:
-        own = cfg.get("risk_models" if level == "strong" else "models", {}).get(engine)
+        own = cfg.get("risk_models" if level in ("strong", "critical") else "models", {}).get(engine)
     if isinstance(own, str):
         picked_model = own
     elif own is not None:
         picked_model, picked_effort = own
-    if level != "strong":
+    if level not in ("strong", "critical"):
         picked_effort = cfg.get("effort", {}).get(engine, picked_effort)
     picked_model = model if model is not None else picked_model
     picked_effort = effort if effort is not None else picked_effort
@@ -242,7 +252,7 @@ def main(argv=None):
     ap.add_argument("--engine", choices=ENGINES)
     ap.add_argument("--model")
     ap.add_argument("--effort")
-    ap.add_argument("--tier", choices=("light", "cheap", "strong"))
+    ap.add_argument("--tier", choices=("light", "cheap", "strong", "critical"))
     ap.add_argument("--raw", help="gate an existing reviewer output instead of running an engine")
     ap.add_argument("--prompt-only", action="store_true")
     ap.add_argument("--ignore-budget", action="store_true", help="run codex despite configured usage limits")
@@ -262,7 +272,7 @@ def main(argv=None):
     if a.tier:
         level, why = a.tier, [f"--tier {a.tier}"]
     extra = {"tier": {"level": level, "score": (ctx.get("tier") or {}).get("score", 0), "why": why}}
-    if level == "strong":
+    if level in ("strong", "critical"):
         extra["escalated"] = why
     if not a.raw and not a.extra_round:
         if len({r["sha"] for r in rounds if r["sha"] != ctx["head_sha"]}) >= findings.MAX_ROUNDS:

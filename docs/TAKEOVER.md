@@ -11,7 +11,7 @@ Read this first, then `AGENTS.md`, `SKILL.md`, and `docs/evals.md` (the evidence
 - **Tiers + agy (2026-10-13):** weighted `tier` score in `pr_context`, `light`/`cheap`/`strong`
   model picks in `review.py`, Antigravity (`agy`) as a fourth read-only engine; docs in
   `SKILL.md`, `references/engines.md`, evals "Reviewer tiers".
-- **Repo:** public, `main` only. Gate green: `py -3 -m unittest discover tests` (129 tests),
+- **Repo:** public, `main` only. Gate green: `py -3 -m unittest discover tests` (130 tests),
   `claude plugin test mod` (4). Installed for Claude Code through a junction in
   `~/.claude/skills/pr-gate`, so **this folder must stay on `main`**: every session loads the skill
   from whatever is checked out here. Codex and Cursor get **copies** (Windows and WSL) in

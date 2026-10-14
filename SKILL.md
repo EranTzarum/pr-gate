@@ -40,8 +40,16 @@ model per engine from `MODEL_TIERS` for that level (`references/engines.md`).
 The result JSON has `tier`: `level`, `score`, `why` (e.g. `risk-path+3`,
 `exec/shell+2`). Put one line in every round report and the green report, e.g.
 `tier: strong (score 7: risk-path+3, exec/shell+2, concurrency+1)`. When
-`level` is `strong`, `escalated` repeats the why list; say so in the report.
-`--tier light|cheap|strong` overrides the pick; `--model`/`--effort` still win
+`level` is `strong` or `critical`, `escalated` repeats the why list; say so in the report.
+
+`critical` (score at least `critical_threshold`, default 10, or a blocker in the
+previous round) only changes agy, which has two pools. Its Gemini models are
+generous; its Claude/GPT models draw a small separate allowance. So agy stays on
+Gemini up to strong, and goes to Claude Sonnet medium at critical. It never goes
+to Opus by itself. Cursor is the same idea: stay on included models, because the
+metered wallet runs out fast.
+
+`--tier light|cheap|strong|critical` overrides the pick; `--model`/`--effort` still win
 over config.
 
 **Blocked models** (flags and `config.json`): `gpt-6-astra` and `claude-fable-*`
@@ -122,7 +130,7 @@ the PR head detached and writes one context JSON (`context_file`):
 ### 3. Review
 
 ```bash
-py -3 <skill>/scripts/review.py <context_file> --engine codex|claude|both|cursor [--model M] [--effort E] [--tier light|cheap|strong]
+py -3 <skill>/scripts/review.py <context_file> --engine codex|claude|both|cursor [--model M] [--effort E] [--tier light|cheap|strong|critical]
 ```
 
 Long-running: run it in the background. For `subagent`: run with

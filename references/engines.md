@@ -49,12 +49,35 @@ Exit 3 means it timed out and was killed; any other non-zero exit with an
 - **Tiers:** `review.py` picks `light`, `cheap`, or `strong` from context and round history
   (`SKILL.md`). Defaults per engine and tier (`MODEL_TIERS`):
 
-| Engine | light | cheap (default) | strong |
-|---|---|---|---|
-| codex | `gpt-6-luna`, effort `low` | `gpt-6-luna`, effort `medium` | `gpt-6.1-sol`, effort `medium` |
-| claude | `haiku` | `sonnet` | `opus` |
-| cursor | `composer-2.5` | `composer-2.5` | `grok-4.7-high` |
-| agy (parked as reviewer) | `gemini-3.8-flash-low` | `gemini-3.8-flash-medium` | `claude-opus-5-5-medium` |
+| Engine | light | cheap (default) | strong | critical |
+|---|---|---|---|---|
+| codex | `gpt-6-luna`, effort `low` | `gpt-6.1-sol`, effort `low` | `gpt-6.1-sol`, effort `medium` | same as strong |
+| claude | `haiku` | `sonnet` | `opus` | same as strong |
+| cursor | `composer-2.5` | `composer-2.5` | `grok-4.7-high` | same as strong |
+| agy (parked as reviewer) | `gemini-3.8-flash-low` | `gemini-3.8-flash-medium` | `gemini-3.8-flash-high` | `claude-sonnet-5-5-medium` |
+
+- **Critical** = tier score at least `critical_threshold` (default 10), or the previous round
+  found a blocker. It only changes agy's seat.
+- **Pools and wallets.** Some tools bill two separate allowances. Stay on the generous one and use the
+  scarce one only when it is worth it:
+
+  | Tool | Generous pool | Scarce pool |
+  |---|---|---|
+  | Cursor | the included models (`composer-2.5`, `grok-*`) | the metered "Other Models" wallet, which runs out fast; `auto` can bill it, so `auto` is blocked |
+  | agy | Gemini models | Claude and GPT models, a separate and much smaller allowance |
+
+  For agy, every tier up to strong uses Gemini. Claude starts at critical, on Sonnet medium. Opus is
+  never picked automatically.
+
+  To climb further, set `tier_models.critical.agy` and move up one step at a time:
+  1. `claude-sonnet-5-5-low`
+  2. `claude-sonnet-5-5-medium`
+  3. `claude-sonnet-5-5-high`
+  4. `claude-opus-5-5-low`
+  5. `claude-opus-5-5-medium`
+  6. `claude-opus-5-5-high`
+
+  Check what is left in the Antigravity app (model picker, "View Usage") before you move up.
 
 - **Blocked** (refused from flags or config): `gpt-6-astra`, any `claude-fable-*`, `gpt-6-terra`,
   Cursor `auto`.

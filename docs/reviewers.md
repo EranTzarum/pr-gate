@@ -43,7 +43,7 @@ The score comes from what the added code does, not from its size:
 On 25 real PRs, every PR that turned out to have a high or blocker finding scored strong. Every report shows the tier line, e.g. `tier: strong (score 7: risk-path+3, exec/shell+2, concurrency+1)`.
 
 **Overrides:**
-- `--tier light|cheap|strong`, or `--model` / `--effort`.
+- `--tier light|cheap|strong|critical`, or `--model` / `--effort`.
 - `~/.pr-gate/config.json` keys `tier_models` and `tier_threshold` ([engines guide](../references/engines.md)).
 
 **Never used, and an error if you name them:**
@@ -52,6 +52,13 @@ On 25 real PRs, every PR that turned out to have a high or blocker finding score
 - Cursor `auto`: billed from a metered pool.
 
 Antigravity's `agy` runs through the launcher, but it is parked as a reviewer: it has no read-only mode that can still read files.
+
+Its table already respects the two pools it bills:
+- Gemini, which is generous, up to `strong`.
+- Claude Sonnet medium only at **critical** (score 10+, or a blocker in the previous round). Its Claude/GPT allowance is small.
+- Opus never automatically.
+
+Cursor follows the same idea, with included models and no metered wallet ([engines guide](../references/engines.md)).
 
 ## What a review costs
 

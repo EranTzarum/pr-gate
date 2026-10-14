@@ -186,7 +186,7 @@ class TierTest(unittest.TestCase):
             "cheap": {"codex": ("gpt-6.1-sol", "low"), "claude": ("sonnet", None),
                       "cursor": ("composer-2.5", None), "agy": ("gemini-3.8-flash-medium", None)},
             "strong": {"codex": ("gpt-6.1-sol", "medium"), "claude": ("opus", None),
-                       "cursor": ("grok-4.7-high", None), "agy": ("claude-opus-5-5-medium", None)},
+                       "cursor": ("grok-4.7-high", None), "agy": ("gemini-3.8-flash-high", None)},
         }
         for score, level in ((0, "cheap"), (4, "cheap"), (5, "strong")):
             ctx = {"tier": {"score": score, "docs_only": False, "why": ["risk-path+3", "sql+2"]}}
@@ -197,6 +197,21 @@ class TierTest(unittest.TestCase):
         self.assertEqual(review.DEFAULT_MODELS, expected["cheap"])
         self.assertEqual(review.RISK_MODELS, expected["strong"])
 
+    def test_critical_uses_scarce_agy_pool_only_then(self):
+        ctx = {"tier": {"score": 10, "docs_only": False, "why": ["risk-path+3"]}}
+        self.assertEqual(review.tier_level(ctx, {}, [])[0], "critical")
+        self.assertEqual(review.tier_level(ctx, {"critical_threshold": 11}, [])[0], "strong")
+        self.assertEqual(review.pick_model("agy", ctx), ("claude-sonnet-5-5-medium", None))
+        # other engines have no separate critical seat: same as strong
+        self.assertEqual(review.pick_model("codex", ctx), ("gpt-6.1-sol", "medium"))
+        self.assertEqual(review.pick_model("claude", ctx), ("opus", None))
+        # agy never picks a Claude model below critical, and never Opus on its own
+        for level in ("light", "cheap", "strong"):
+            self.assertTrue(review.MODEL_TIERS["agy"][level][0].startswith("gemini-"))
+        self.assertNotIn("opus", json.dumps(review.MODEL_TIERS["agy"]))
+        cfg = {"tier_models": {"critical": {"agy": "claude-opus-5-5-low"}}}
+        self.assertEqual(review.pick_model("agy", ctx, cfg=cfg), ("claude-opus-5-5-low", None))
+
     def test_docs_only_stays_light_even_with_history(self):
         ctx = {"tier": {"score": 10, "docs_only": True}, "head_sha": "head"}
         rounds = [{"sha": "a"}, {"sha": "b", "findings": [finding(severity="blocker")]}]
@@ -206,10 +221,10 @@ class TierTest(unittest.TestCase):
 
     def test_history_uses_last_different_head_and_distinct_shas(self):
         ctx = {"head_sha": "head", "tier": {"score": 0}}
-        for severity in ("high", "blocker"):
+        for severity, level in (("high", "strong"), ("blocker", "critical")):
             rounds = [{"sha": "a", "findings": [finding(severity=severity)]}, {"sha": "head"}]
             self.assertEqual(review.tier_level(ctx, {}, rounds),
-                             ("strong", ["previous round found high/blocker"]))
+                             (level, ["previous round found high/blocker"]))
         rounds = [{"sha": "a", "findings": [finding(severity="blocker")]}, {"sha": "b"}]
         self.assertEqual(review.tier_level(ctx, {}, rounds), ("strong", ["last round before cap"]))
         self.assertEqual(review.tier_level(ctx, {}, [{"sha": "a"}, {"sha": "a"}])[0], "cheap")

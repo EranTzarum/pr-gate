@@ -11,7 +11,7 @@ A skill that reviews each pull request, sends the fixes back to the session that
 <a href="docs/reviewers.md"><img src="https://img.shields.io/badge/Codex-0058A0?style=for-the-badge&logo=openai&logoColor=white" alt="Codex"></a>
 <a href="docs/reviewers.md"><img src="https://img.shields.io/badge/Cursor-000000?style=for-the-badge&logo=cursor&logoColor=white" alt="Cursor"></a>
 <a href="#install-by-hand"><img src="https://img.shields.io/badge/Python_3-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python 3"></a>
-<a href="#install-by-hand"><img src="https://img.shields.io/badge/tests-129_passing-16A34A?style=for-the-badge" alt="129 tests passing"></a>
+<a href="#install-by-hand"><img src="https://img.shields.io/badge/tests-130_passing-16A34A?style=for-the-badge" alt="130 tests passing"></a>
 <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-052E16?style=for-the-badge" alt="MIT license"></a>
 
 <br>
@@ -20,7 +20,7 @@ A skill that reviews each pull request, sends the fixes back to the session that
 
 <br>
 
-<img src="docs/assets/stats.svg" alt="129 tests passing, 3 rounds max per PR, 61% less Codex input in later rounds, 25 real PRs reviewed" width="860">
+<img src="docs/assets/stats.svg" alt="130 tests passing, 3 rounds max per PR, 61% less Codex input in later rounds, 25 real PRs reviewed" width="860">
 
 </div>
 
@@ -35,7 +35,7 @@ A skill that reviews each pull request, sends the fixes back to the session that
 
 ```bash
 git clone https://github.com/EranTzarum/pr-gate.git ~/.claude/skills/pr-gate   # Codex: ~/.codex/skills, Cursor: ~/.cursor/skills
-cd ~/.claude/skills/pr-gate && python3 -m unittest discover tests   # expected: Ran 129 tests ... OK
+cd ~/.claude/skills/pr-gate && python3 -m unittest discover tests   # expected: Ran 130 tests ... OK
 ```
 
 Then, in a session inside your repo: `/pr-gate owner/repo 12`. You need [`gh`](https://cli.github.com) logged in, Python 3 and `git`. Reviewer login and preferences: [the five steps below](#install-by-hand).
@@ -100,7 +100,7 @@ Or by hand, in five steps:
 
 On Windows, `~` is `%USERPROFILE%`. Using two of these tools? Clone it once and copy (or link) the folder into the others.
 
-**2. Check it:** inside the skill folder, `python3 -m unittest discover tests` (`py -3` on Windows). Expected: `Ran 129 tests ... OK`. No network calls; `gh` is mocked.
+**2. Check it:** inside the skill folder, `python3 -m unittest discover tests` (`py -3` on Windows). Expected: `Ran 130 tests ... OK`. No network calls; `gh` is mocked.
 
 **3. Make sure your reviewer can answer.** Every reviewer is a plain CLI, so no plugin is needed to use a model from another tool. For each one you have:
 
