@@ -11,7 +11,7 @@ Read this first, then `AGENTS.md`, `SKILL.md`, and `docs/evals.md` (the evidence
 - **Tiers + agy (2026-10-13):** weighted `tier` score in `pr_context`, `light`/`cheap`/`strong`
   model picks in `review.py`, Antigravity (`agy`) as a fourth read-only engine; docs in
   `SKILL.md`, `references/engines.md`, evals "Reviewer tiers".
-- **Repo:** public, `main` only. Gate green: `py -3 -m unittest discover tests` (130 tests),
+- **Repo:** public, `main` only. Gate green: `py -3 -m unittest discover tests` (133 tests),
   `claude plugin test mod` (4). Installed for Claude Code through a junction in
   `~/.claude/skills/pr-gate`, so **this folder must stay on `main`**: every session loads the skill
   from whatever is checked out here. Codex and Cursor get **copies** (Windows and WSL) in
@@ -62,13 +62,14 @@ Read this first, then `AGENTS.md`, `SKILL.md`, and `docs/evals.md` (the evidence
 6. **Docs-only PRs:** consider skipping the review or using the cheapest engine.
 7. `lean_run.py` lives here (move if a third consumer appears); `--all-open` is sequential.
 8. **Verify the cost cut live** (`usage.py` numbers before/after the context and budget changes).
-9. **Waiting on the factory (agreed 2026-10-14):** crew is adopting the same model/effort ladder
-   (its F15 plan). Two pieces pr-gate will use once the factory sends them:
-   - a shared seats data file (engine, model, pool, tier, last ping) with a sync check, so the two
-     ladders can't drift;
-   - a machine-wide usage file (agy and Cursor headroom), so the budget can also spend scarce
-     allowance that would reset unused.
-   Nothing to do until the factory sends the path and format.
+9. **Shared with the factory (crew F15):**
+   - **Done (2026-10-18):** `usage.py` appends each run to the machine-wide
+     `~/.agent-usage/usage.jsonl` (contract: that folder's README). It writes one `spend` row,
+     plus Codex `server` rows (5h, week). The Codex budget reads the newest pool-wide reading
+     from any tool.
+   - **Still open:** the shared seats file, so the two ladders can't drift. Also spending scarce
+     allowance that would reset unused: Cursor and agy expose no usage today (agy only on a 429),
+     so that waits for readings.
 
 ## How to test a change
 

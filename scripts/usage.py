@@ -1,9 +1,15 @@
 """Append and summarize per-review usage from lean_run.
 
   py -3 usage.py [--since 5h|today|week|all] [--json]
+
+Every review is also appended to the machine-wide shared file ~/.agent-usage/usage.jsonl
+(contract in its README, shared with an orchestrator): one `spend` row per run, plus
+`server` rows for the wallet's own % when the engine reports it (codex 5h/week). The Codex
+budget reads the newest `server` rows from that file too, so other tools' use counts.
 """
 import argparse
 import json
+import os
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -36,18 +42,95 @@ def _aware_utc(dt):
     return dt.astimezone(timezone.utc)
 
 
+def SHARED():
+    """Machine-wide file. An isolated PR_GATE_HOME (tests, trial runs) keeps its own copy."""
+    if os.environ.get("AGENT_USAGE_HOME"):
+        return Path(os.environ["AGENT_USAGE_HOME"]) / "usage.jsonl"
+    if os.environ.get("PR_GATE_HOME"):
+        return Path(os.environ["PR_GATE_HOME"]) / "agent-usage" / "usage.jsonl"
+    return Path.home() / ".agent-usage" / "usage.jsonl"
+
+
+CURSOR_INCLUDED = ("composer-", "grok-", "cursor-grok-")
+
+
+def pool_of(engine, model):
+    model = model or ""
+    if engine == "codex":
+        return "codex:chatgpt"
+    if engine == "claude":
+        return "claude:max"
+    if engine == "cursor":
+        return "cursor:included" if model.startswith(CURSOR_INCLUDED) else "cursor:other"
+    if engine == "agy":
+        return "agy:gemini" if model.startswith("gemini-") else "agy:claude-gpt"
+    return f"{engine}:unknown"
+
+
+def _spend_usage(u):
+    """Each engine's usage dict -> the shared {input, cached, cache_creation, output}."""
+    u = u or {}
+    pick = lambda *keys: next((u[k] for k in keys if isinstance(u.get(k), (int, float))), 0)  # noqa: E731
+    return {"input": pick("input_tokens", "inputTokens"),
+            "cached": pick("cached_input_tokens", "cache_read_input_tokens", "cacheReadTokens", "cache_read_tokens"),
+            "cache_creation": pick("cache_creation_input_tokens", "cacheWriteTokens"),
+            "output": pick("output_tokens", "outputTokens")}
+
+
+def _append(path, lines):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as f:
+        for line in lines:
+            f.write(line)  # one write per row (contract)
+
+
+def share(rec):
+    """Shared rows for one run. Numbers, names and ids only."""
+    engine, model = rec.get("engine"), rec.get("model")
+    if not engine:
+        return
+    pool, now = pool_of(engine, model), _now_iso()
+    rows = [{"ts": rec.get("ts") or now, "source": "pr-gate", "kind": "spend", "engine": engine,
+             "pool": pool, "model": model, "run_id": rec.get("sha"), "ticket": f"{rec.get('repo')}#{rec.get('pr')}",
+             "usage": _spend_usage(rec.get("usage"))}]
+    rl = rec.get("rate_limits") or {}
+    for window in ("5h", "week"):
+        if isinstance(rl.get(window), (int, float)):
+            row = {"ts": rec.get("ts") or now, "source": "pr-gate", "kind": "server", "engine": engine,
+                   "pool": pool, "window": window, "used_pct": float(rl[window]), "read_at": now}
+            if isinstance(rl.get(f"{window}_resets_at"), (int, float)):
+                row["resets_at"] = rl[f"{window}_resets_at"]
+            rows.append(row)
+    _append(SHARED(), [json.dumps(r, separators=(",", ":")) + "\n" for r in rows])
+
+
 def log(record: dict) -> None:
     rec = dict(record)
     if "ts" not in rec:
         rec["ts"] = _now_iso()
     line = json.dumps(rec, separators=(",", ":")) + "\n"
     try:
-        p = PATH()
-        p.parent.mkdir(parents=True, exist_ok=True)
-        with open(p, "a", encoding="utf-8") as f:
-            f.write(line)
+        _append(PATH(), [line])
     except OSError as exc:
         print(f"warning: usage log write failed: {exc}", file=sys.stderr)
+    try:
+        share(rec)
+    except OSError as exc:
+        print(f"warning: shared usage write failed: {exc}", file=sys.stderr)
+
+
+def _jsonl(p):
+    if not p.exists():
+        return []
+    out = []
+    for line in p.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue  # includes a partial last line
+        if isinstance(rec, dict):
+            out.append(rec)
+    return out
 
 
 def read(since_seconds=None):
@@ -76,22 +159,35 @@ def read(since_seconds=None):
 
 
 def last_limits(engine):
-    best = None
-    best_ts = None
-    for rec in read():
-        if rec.get("engine") != engine:
-            continue
-        rl = rec.get("rate_limits")
-        if not rl:
-            continue
-        ts = _parse_ts(rec.get("ts"))
-        if ts is None:
-            continue
+    """Newest reading per window for this engine: our own runs, plus the shared file's
+    pool-wide `server` rows from any tool. Returns {5h, 5h_resets_at, week, week_resets_at}."""
+    best = {}  # window -> (ts, pct, resets_at)
+
+    def offer(window, ts, pct, resets):
+        ts = _parse_ts(ts)
+        if ts is None or not isinstance(pct, (int, float)):
+            return
         ts = _aware_utc(ts)
-        if best_ts is None or ts > best_ts:
-            best_ts = ts
-            best = rl
-    return best
+        if window not in best or ts > best[window][0]:
+            best[window] = (ts, pct, resets)
+
+    for rec in read():
+        rl = rec.get("rate_limits")
+        if rec.get("engine") == engine and rl:
+            for w in ("5h", "week"):
+                offer(w, rec.get("ts"), rl.get(w), rl.get(f"{w}_resets_at"))
+    for rec in _jsonl(SHARED()):
+        if (rec.get("kind") == "server" and rec.get("engine") == engine and not rec.get("model")
+                and not str(rec.get("pool", "")).endswith(":unknown")):
+            offer(rec.get("window"), rec.get("ts"), rec.get("used_pct"), rec.get("resets_at"))
+    if not best:
+        return None
+    out = {}
+    for w, (_, pct, resets) in best.items():
+        out[w] = pct
+        if resets is not None:
+            out[f"{w}_resets_at"] = resets
+    return out
 
 
 def summary(records):

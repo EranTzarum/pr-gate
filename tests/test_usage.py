@@ -33,6 +33,43 @@ class UsageTest(unittest.TestCase):
         self.assertIn("ts", rows[0])
         self.assertEqual(rows[1]["ts"], "2026-01-02T12:00:00Z")
 
+    def test_log_appends_shared_spend_and_server_rows(self):
+        usage.log({"engine": "codex", "model": "gpt-6-sol", "repo": "o/r", "pr": 4, "sha": "abc",
+                   "ts": "2026-10-18T09:00:00Z",
+                   "usage": {"input_tokens": 100, "cached_input_tokens": 60, "output_tokens": 5},
+                   "rate_limits": {"5h": 23.0, "5h_resets_at": 1792328911, "week": 4.0}})
+        rows = [json.loads(x) for x in usage.SHARED().read_text(encoding="utf-8").splitlines()]
+        self.assertEqual([r["kind"] for r in rows], ["spend", "server", "server"])
+        spend = rows[0]
+        self.assertEqual((spend["source"], spend["pool"], spend["model"], spend["ticket"]),
+                         ("pr-gate", "codex:chatgpt", "gpt-6-sol", "o/r#4"))
+        self.assertEqual(spend["usage"], {"input": 100, "cached": 60, "cache_creation": 0, "output": 5})
+        self.assertEqual((rows[1]["window"], rows[1]["used_pct"], rows[1]["resets_at"]), ("5h", 23.0, 1792328911))
+        self.assertNotIn("resets_at", rows[2])
+        self.assertNotIn("model", rows[1])  # a server row speaks for the whole pool
+
+    def test_pools(self):
+        self.assertEqual(usage.pool_of("cursor", "composer-2.5"), "cursor:included")
+        self.assertEqual(usage.pool_of("cursor", "gpt-5.6-sol-high"), "cursor:other")
+        self.assertEqual(usage.pool_of("agy", "gemini-3.8-flash-high"), "agy:gemini")
+        self.assertEqual(usage.pool_of("agy", "claude-sonnet-5-5-medium"), "agy:claude-gpt")
+        self.assertEqual(usage.pool_of("claude", "opus"), "claude:max")
+
+    def test_last_limits_takes_newest_shared_reading_per_window(self):
+        usage.log({"engine": "codex", "ts": "2026-10-18T08:00:00Z", "rate_limits": {"5h": 10.0, "week": 3.0}})
+        other = [  # another tool's readings: newer 5h, older week, one model-only row, one unknown pool
+            {"ts": "2026-10-18T09:00:00Z", "source": "crew", "kind": "server", "engine": "codex",
+             "pool": "codex:chatgpt", "window": "5h", "used_pct": 85.0, "resets_at": 1},
+            {"ts": "2026-10-17T09:00:00Z", "source": "crew", "kind": "server", "engine": "codex",
+             "pool": "codex:chatgpt", "window": "week", "used_pct": 99.0},
+            {"ts": "2026-10-18T10:00:00Z", "source": "crew", "kind": "server", "engine": "codex",
+             "pool": "codex:chatgpt", "model": "gpt-6-luna", "window": "5h", "used_pct": 100.0},
+        ]
+        with open(usage.SHARED(), "a", encoding="utf-8") as f:
+            f.write("".join(json.dumps(r) + "\n" for r in other) + '{"partial')
+        self.assertEqual(usage.last_limits("codex"), {"5h": 85.0, "5h_resets_at": 1, "week": 3.0})
+        self.assertIsNone(usage.last_limits("cursor"))
+
     def test_read_skips_bad_line(self):
         p = usage.PATH()
         p.parent.mkdir(parents=True, exist_ok=True)

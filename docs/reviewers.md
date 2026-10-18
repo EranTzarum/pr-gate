@@ -68,6 +68,7 @@ Cursor follows the same idea, with included models and no metered wallet ([engin
 - **See the totals** with `python3 scripts/usage.py --since today` (or `5h`, `week`, `all`).
 - **Later rounds review only what changed** since the last reviewed commit, plus the earlier findings. The repo's docs go in once, capped.
 - **Measured on a real PR:** Codex input in a later round dropped from 1.03M to 395k tokens (−61%) ([evals](evals.md)).
+- **Shared readings:** each review is also appended to the machine-wide `~/.agent-usage/usage.jsonl`. Other tools on the same machine write their readings there too. The budget below uses the newest Codex reading from any of them.
 - **A `budget` in config** switches from Codex to another engine before you hit your limits. The cap of 3 rounds per PR is enforced; a 4th needs your OK (`--extra-round`).
 
 ## Lean runs
