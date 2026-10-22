@@ -14,6 +14,8 @@
 | `mod/` | The inbox mod: delivers fix requests to the session whose branch has the PR |
 | `scripts/wait.py` | Waits for CI or a new push, as a process rather than a polling model |
 | `scripts/redact.py` | Secret masking |
+| `scripts/usage.py` | Usage ledger, shared usage file, Codex budget readings |
+| `seats/seats.json` | Synced copy of an orchestrator's seat file; `tests/test_seats.py` keeps the tier rules and models equal |
 | `AGENTS.md` | Rules for working on this repo (the only instruction file) |
 
 Back to the [README](../README.md).

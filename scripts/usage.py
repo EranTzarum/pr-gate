@@ -63,6 +63,8 @@ def pool_of(engine, model):
     if engine == "cursor":
         return "cursor:included" if model.startswith(CURSOR_INCLUDED) else "cursor:other"
     if engine == "agy":
+        if model.startswith("gemini-4-argon"):
+            return "agy:argon"  # its own weekly limit (seats/seats.json)
         return "agy:gemini" if model.startswith("gemini-") else "agy:claude-gpt"
     return f"{engine}:unknown"
 
@@ -212,15 +214,13 @@ def summary(records):
         if isinstance(sec, (int, float)):
             s["seconds"] += sec
         usage = rec.get("usage") or {}
-        for key, field in (
-            ("input_tokens", "input"),
-            ("cached_input_tokens", "cached"),
-            ("output_tokens", "output"),
-            ("reasoning_output_tokens", "reasoning"),
-        ):
-            val = usage.get(key)
-            if isinstance(val, (int, float)):
-                s[field] += val
+        u = _spend_usage(usage)
+        # Codex input already includes its cached part; Claude reports cache reads and writes apart.
+        s["input"] += u["input"] if eng == "codex" else u["input"] + u["cached"] + u["cache_creation"]
+        s["cached"] += u["cached"]
+        s["output"] += u["output"]
+        if isinstance(usage.get("reasoning_output_tokens"), (int, float)):
+            s["reasoning"] += usage["reasoning_output_tokens"]
         rl = rec.get("rate_limits")
         if rl:
             ts = _parse_ts(rec.get("ts"))

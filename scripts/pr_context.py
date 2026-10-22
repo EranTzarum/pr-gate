@@ -188,7 +188,7 @@ TIER_CATS = {  # name: (weight, regex on ADDED lines of code files)
     "guards":        (2, r"\bdeny\b|allowlist|denylist|guard|sanitiz|escape|unquote|shlex"),
     "destructive":   (2, r"\bdrop\b|rmtree|rm -rf|unlink\(|truncate|force[-_ ]push|--force|reset --hard"),
     "db-security":   (2, r"row level|security definer|\bgrant\b|\brevoke\b|service_role|tenant|auth\.uid"),
-    "concurrency":   (1, r"\block\b|mutex|transaction|for update|idempot|race"),
+    "concurrency":   (1, r"\block\b|mutex|transaction|for update|idempot|\brace\b"),
     "isolation":     (1, r"cache|session|sign ?out|logout|user_?id"),
 }
 NON_CODE = r"\.md$|^docs/|(^|/)tests?/|\.test\.|_test\.|(^|/)test_|lock(file)?\.|package-lock|\.snap$|\.json$"

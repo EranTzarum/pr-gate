@@ -1,0 +1,582 @@
+{
+ "version": 1,
+ "note": "Seat metadata for the Office's seat scorer (F15). Legality stays with bin/crew.py's constants; TestSeatsFile keeps the two equal. pr-gate keeps a synced copy. Pool windows are what docs/research/usage-sources.md measured.",
+ "pools": {
+  "codex:chatgpt": {
+   "windows": [
+    "5h",
+    "week"
+   ],
+   "source": "server"
+  },
+  "claude:max": {
+   "windows": [
+    "5h",
+    "week"
+   ],
+   "source": "server"
+  },
+  "cursor:included": {
+   "windows": [
+    "month"
+   ],
+   "source": "unknown"
+  },
+  "cursor:other": {
+   "windows": [
+    "month"
+   ],
+   "source": "unknown",
+   "never_auto": true
+  },
+  "agy:gemini": {
+   "windows": [
+    "5h",
+    "week"
+   ],
+   "source": "429-only"
+  },
+  "agy:claude-gpt": {
+   "windows": [
+    "5h",
+    "week"
+   ],
+   "source": "429-only"
+  },
+  "agy:argon": {
+   "windows": [
+    "week"
+   ],
+   "source": "429-only",
+   "note": "own weekly limit, ~4.3M tokens (owner panel 2026-10-19)"
+  }
+ },
+ "tiers": [
+  "light",
+  "cheap",
+  "strong",
+  "critical"
+ ],
+ "tier_rules": {
+  "note": "Copied as data from pr-gate scripts/pr_context.py (RISK, TIER_CATS, NON_CODE) on 2026-10-22. Crew scores a ticket before any diff exists, so the categories match the brief text and the risk paths match the write set.",
+  "non_code": "\\.md$|^docs/|(^|/)tests?/|\\.test\\.|_test\\.|(^|/)test_|lock(file)?\\.|package-lock|\\.snap$|\\.json$",
+  "risk_paths": {
+   "migration": "(^|/)migrations?/|\\.sql$",
+   "auth": "(^|/)auth(n|z|entication|orization)?([/._-]|$)|\\brls\\b|_rls|rls_|polic(y|ies)|permissions?",
+   "workflow": "^\\.github/workflows/",
+   "payment": "payment|billing|stripe|checkout|invoice|subscription"
+  },
+  "risk_path_weight": 3,
+  "categories": {
+   "secrets/perms": [
+    2,
+    "chmod|0o?600|permission|credential|secret|auth\\.json|api[_-]?key|password|private key"
+   ],
+   "exec/shell": [
+    2,
+    "subprocess|exec(Sync|File)?\\(|spawn\\(|\\bshell\\b|eval\\(|child_process"
+   ],
+   "guards": [
+    2,
+    "\\bdeny\\b|allowlist|denylist|guard|sanitiz|escape|unquote|shlex"
+   ],
+   "destructive": [
+    2,
+    "\\bdrop\\b|rmtree|rm -rf|unlink\\(|truncate|force[-_ ]push|--force|reset --hard"
+   ],
+   "db-security": [
+    2,
+    "row level|security definer|\\bgrant\\b|\\brevoke\\b|service_role|tenant|auth\\.uid"
+   ],
+   "concurrency": [
+    1,
+    "\\block\\b|mutex|transaction|for update|idempot|\\brace\\b"
+   ],
+   "isolation": [
+    1,
+    "cache|session|sign ?out|logout|user_?id"
+   ]
+  },
+  "strong_at": 5,
+  "critical_at": 10
+ },
+ "weights": {
+  "note": "Owner-tuned, never auto-tuned.",
+  "tier": 1.0,
+  "fit": 1.0,
+  "headroom": 1.0,
+  "preference": 1.0,
+  "diversity": 0.5,
+  "full_pool_pct": 90,
+  "fit_floor": 5,
+  "preference_half_life_days": 30
+ },
+ "seats": [
+  {
+   "engine": "codex",
+   "model": "gpt-5.6-luna",
+   "pool": "codex:chatgpt",
+   "tier": "light",
+   "effort_in_slug": false,
+   "shell": true,
+   "grants": true,
+   "status": "qualified",
+   "last_ping": "2026-10-22"
+  },
+  {
+   "engine": "codex",
+   "model": "gpt-5.6-sol",
+   "pool": "codex:chatgpt",
+   "tier": "cheap",
+   "effort_in_slug": false,
+   "shell": true,
+   "grants": true,
+   "status": "legal",
+   "last_ping": null
+  },
+  {
+   "engine": "codex",
+   "model": "gpt-5.6-terra",
+   "pool": "codex:chatgpt",
+   "tier": "cheap",
+   "effort_in_slug": false,
+   "shell": true,
+   "grants": true,
+   "status": "legal",
+   "last_ping": null
+  },
+  {
+   "engine": "codex",
+   "model": "gpt-6-astra",
+   "pool": "codex:chatgpt",
+   "tier": "strong",
+   "effort_in_slug": false,
+   "shell": true,
+   "grants": true,
+   "status": "legal",
+   "last_ping": "2026-09-06"
+  },
+  {
+   "engine": "codex",
+   "model": "gpt-6-luna",
+   "pool": "codex:chatgpt",
+   "tier": "light",
+   "effort_in_slug": false,
+   "shell": true,
+   "grants": true,
+   "status": "qualified",
+   "last_ping": "2026-10-22"
+  },
+  {
+   "engine": "codex",
+   "model": "gpt-6-sol",
+   "pool": "codex:chatgpt",
+   "tier": "cheap",
+   "effort_in_slug": false,
+   "shell": true,
+   "grants": true,
+   "status": "legal",
+   "last_ping": "2026-09-29"
+  },
+  {
+   "engine": "codex",
+   "model": "gpt-6.1-sol",
+   "pool": "codex:chatgpt",
+   "tier": "strong",
+   "effort_in_slug": false,
+   "shell": true,
+   "grants": true,
+   "status": "legal",
+   "last_ping": "2026-09-30"
+  },
+  {
+   "engine": "claude",
+   "model": "claude-fable-5-1",
+   "pool": "claude:max",
+   "tier": "critical",
+   "effort_in_slug": false,
+   "shell": true,
+   "grants": true,
+   "status": "legal",
+   "last_ping": null,
+   "no_zdr": true
+  },
+  {
+   "engine": "claude",
+   "model": "haiku",
+   "pool": "claude:max",
+   "tier": "light",
+   "effort_in_slug": false,
+   "shell": true,
+   "grants": true,
+   "status": "qualified",
+   "last_ping": "2026-10-22"
+  },
+  {
+   "engine": "claude",
+   "model": "opus",
+   "pool": "claude:max",
+   "tier": "strong",
+   "effort_in_slug": false,
+   "shell": true,
+   "grants": true,
+   "status": "legal",
+   "last_ping": null
+  },
+  {
+   "engine": "claude",
+   "model": "sonnet",
+   "pool": "claude:max",
+   "tier": "cheap",
+   "effort_in_slug": false,
+   "shell": true,
+   "grants": true,
+   "status": "legal",
+   "last_ping": null
+  },
+  {
+   "engine": "cursor",
+   "model": "composer-2.5",
+   "pool": "cursor:included",
+   "tier": "cheap",
+   "effort_in_slug": true,
+   "shell": true,
+   "grants": true,
+   "status": "legal",
+   "last_ping": null
+  },
+  {
+   "engine": "cursor",
+   "model": "composer-2.5-fast",
+   "pool": "cursor:included",
+   "tier": "cheap",
+   "effort_in_slug": true,
+   "shell": true,
+   "grants": true,
+   "status": "legal",
+   "last_ping": null
+  },
+  {
+   "engine": "cursor",
+   "model": "cursor-grok-4.6-high",
+   "pool": "cursor:included",
+   "tier": "strong",
+   "effort_in_slug": true,
+   "shell": true,
+   "grants": true,
+   "status": "legal",
+   "last_ping": null
+  },
+  {
+   "engine": "cursor",
+   "model": "cursor-grok-4.6-high-fast",
+   "pool": "cursor:included",
+   "tier": "strong",
+   "effort_in_slug": true,
+   "shell": true,
+   "grants": true,
+   "status": "legal",
+   "last_ping": null
+  },
+  {
+   "engine": "cursor",
+   "model": "cursor-grok-4.6-low",
+   "pool": "cursor:included",
+   "tier": "cheap",
+   "effort_in_slug": true,
+   "shell": true,
+   "grants": true,
+   "status": "legal",
+   "last_ping": null
+  },
+  {
+   "engine": "cursor",
+   "model": "cursor-grok-4.6-low-fast",
+   "pool": "cursor:included",
+   "tier": "cheap",
+   "effort_in_slug": true,
+   "shell": true,
+   "grants": true,
+   "status": "legal",
+   "last_ping": null
+  },
+  {
+   "engine": "cursor",
+   "model": "cursor-grok-4.6-medium",
+   "pool": "cursor:included",
+   "tier": "cheap",
+   "effort_in_slug": true,
+   "shell": true,
+   "grants": true,
+   "status": "legal",
+   "last_ping": null
+  },
+  {
+   "engine": "cursor",
+   "model": "cursor-grok-4.6-medium-fast",
+   "pool": "cursor:included",
+   "tier": "cheap",
+   "effort_in_slug": true,
+   "shell": true,
+   "grants": true,
+   "status": "legal",
+   "last_ping": null
+  },
+  {
+   "engine": "cursor",
+   "model": "cursor-grok-4.6-xhigh",
+   "pool": "cursor:included",
+   "tier": "critical",
+   "effort_in_slug": true,
+   "shell": true,
+   "grants": true,
+   "status": "legal",
+   "last_ping": null
+  },
+  {
+   "engine": "cursor",
+   "model": "cursor-grok-4.6-xhigh-fast",
+   "pool": "cursor:included",
+   "tier": "critical",
+   "effort_in_slug": true,
+   "shell": true,
+   "grants": true,
+   "status": "legal",
+   "last_ping": null
+  },
+  {
+   "engine": "cursor",
+   "model": "grok-4.7-high",
+   "pool": "cursor:included",
+   "tier": "strong",
+   "effort_in_slug": true,
+   "shell": true,
+   "grants": true,
+   "status": "legal",
+   "last_ping": null
+  },
+  {
+   "engine": "cursor",
+   "model": "grok-4.7-high-fast",
+   "pool": "cursor:included",
+   "tier": "strong",
+   "effort_in_slug": true,
+   "shell": true,
+   "grants": true,
+   "status": "legal",
+   "last_ping": null
+  },
+  {
+   "engine": "cursor",
+   "model": "grok-4.7-low",
+   "pool": "cursor:included",
+   "tier": "cheap",
+   "effort_in_slug": true,
+   "shell": true,
+   "grants": true,
+   "status": "legal",
+   "last_ping": null
+  },
+  {
+   "engine": "cursor",
+   "model": "grok-4.7-low-fast",
+   "pool": "cursor:included",
+   "tier": "cheap",
+   "effort_in_slug": true,
+   "shell": true,
+   "grants": true,
+   "status": "legal",
+   "last_ping": null
+  },
+  {
+   "engine": "cursor",
+   "model": "grok-4.7-medium",
+   "pool": "cursor:included",
+   "tier": "cheap",
+   "effort_in_slug": true,
+   "shell": true,
+   "grants": true,
+   "status": "legal",
+   "last_ping": null
+  },
+  {
+   "engine": "cursor",
+   "model": "grok-4.7-medium-fast",
+   "pool": "cursor:included",
+   "tier": "cheap",
+   "effort_in_slug": true,
+   "shell": true,
+   "grants": true,
+   "status": "legal",
+   "last_ping": null
+  },
+  {
+   "engine": "cursor",
+   "model": "grok-4.7-xhigh",
+   "pool": "cursor:included",
+   "tier": "critical",
+   "effort_in_slug": true,
+   "shell": true,
+   "grants": true,
+   "status": "legal",
+   "last_ping": null
+  },
+  {
+   "engine": "cursor",
+   "model": "grok-4.7-xhigh-fast",
+   "pool": "cursor:included",
+   "tier": "critical",
+   "effort_in_slug": true,
+   "shell": true,
+   "grants": true,
+   "status": "legal",
+   "last_ping": null
+  },
+  {
+   "engine": "agy",
+   "model": "claude-opus-5-5-high",
+   "pool": "agy:claude-gpt",
+   "tier": "critical",
+   "effort_in_slug": true,
+   "shell": true,
+   "grants": false,
+   "status": "legal",
+   "last_ping": null,
+   "auto": false
+  },
+  {
+   "engine": "agy",
+   "model": "claude-opus-5-5-low",
+   "pool": "agy:claude-gpt",
+   "tier": "strong",
+   "effort_in_slug": true,
+   "shell": true,
+   "grants": false,
+   "status": "legal",
+   "last_ping": null,
+   "auto": false
+  },
+  {
+   "engine": "agy",
+   "model": "claude-opus-5-5-medium",
+   "pool": "agy:claude-gpt",
+   "tier": "strong",
+   "effort_in_slug": true,
+   "shell": true,
+   "grants": false,
+   "status": "legal",
+   "last_ping": null,
+   "auto": false
+  },
+  {
+   "engine": "agy",
+   "model": "claude-sonnet-5-5-high",
+   "pool": "agy:claude-gpt",
+   "tier": "strong",
+   "effort_in_slug": true,
+   "shell": true,
+   "grants": false,
+   "status": "legal",
+   "last_ping": null
+  },
+  {
+   "engine": "agy",
+   "model": "claude-sonnet-5-5-low",
+   "pool": "agy:claude-gpt",
+   "tier": "cheap",
+   "effort_in_slug": true,
+   "shell": true,
+   "grants": false,
+   "status": "legal",
+   "last_ping": null
+  },
+  {
+   "engine": "agy",
+   "model": "claude-sonnet-5-5-medium",
+   "pool": "agy:claude-gpt",
+   "tier": "cheap",
+   "effort_in_slug": true,
+   "shell": true,
+   "grants": false,
+   "status": "qualified",
+   "last_ping": "2026-10-22"
+  },
+  {
+   "engine": "agy",
+   "model": "gemini-3.8-flash-high",
+   "pool": "agy:gemini",
+   "tier": "cheap",
+   "effort_in_slug": true,
+   "shell": true,
+   "grants": false,
+   "status": "default",
+   "last_ping": "2026-10-11"
+  },
+  {
+   "engine": "agy",
+   "model": "gemini-3.8-flash-low",
+   "pool": "agy:gemini",
+   "tier": "light",
+   "effort_in_slug": true,
+   "shell": true,
+   "grants": false,
+   "status": "legal",
+   "last_ping": "2026-10-11"
+  },
+  {
+   "engine": "agy",
+   "model": "gemini-3.8-flash-medium",
+   "pool": "agy:gemini",
+   "tier": "cheap",
+   "effort_in_slug": true,
+   "shell": true,
+   "grants": false,
+   "status": "legal",
+   "last_ping": null
+  },
+  {
+   "engine": "agy",
+   "model": "gemini-4-argon-high",
+   "pool": "agy:argon",
+   "tier": "critical",
+   "effort_in_slug": true,
+   "shell": true,
+   "grants": false,
+   "status": "legal",
+   "last_ping": null
+  },
+  {
+   "engine": "agy",
+   "model": "gemini-4-argon-low",
+   "pool": "agy:argon",
+   "tier": "strong",
+   "effort_in_slug": true,
+   "shell": true,
+   "grants": false,
+   "status": "legal",
+   "last_ping": "2026-10-19"
+  },
+  {
+   "engine": "agy",
+   "model": "gemini-4-argon-medium",
+   "pool": "agy:argon",
+   "tier": "strong",
+   "effort_in_slug": true,
+   "shell": true,
+   "grants": false,
+   "status": "legal",
+   "last_ping": "2026-10-19"
+  },
+  {
+   "engine": "agy",
+   "model": "gpt-oss-120b-medium",
+   "pool": "agy:claude-gpt",
+   "tier": "cheap",
+   "effort_in_slug": true,
+   "shell": true,
+   "grants": false,
+   "status": "legal",
+   "last_ping": null
+  }
+ ]
+}

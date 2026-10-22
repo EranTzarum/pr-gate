@@ -53,6 +53,7 @@ class UsageTest(unittest.TestCase):
         self.assertEqual(usage.pool_of("cursor", "gpt-5.6-sol-high"), "cursor:other")
         self.assertEqual(usage.pool_of("agy", "gemini-3.8-flash-high"), "agy:gemini")
         self.assertEqual(usage.pool_of("agy", "claude-sonnet-5-5-medium"), "agy:claude-gpt")
+        self.assertEqual(usage.pool_of("agy", "gemini-4-argon-medium"), "agy:argon")
         self.assertEqual(usage.pool_of("claude", "opus"), "claude:max")
 
     def test_last_limits_takes_newest_shared_reading_per_window(self):
@@ -124,6 +125,8 @@ class UsageTest(unittest.TestCase):
                 "ts": "2026-01-02T00:00:00Z",
             },
             {"engine": "claude", "seconds": 5, "usage": {"input_tokens": 300}},
+            {"engine": "claude", "seconds": 5, "usage": {"input_tokens": 4, "cache_read_input_tokens": 600,
+                                                          "cache_creation_input_tokens": 96}},
         ]
         s = usage.summary(records)
         self.assertEqual(s["codex"]["runs"], 2)
@@ -134,8 +137,9 @@ class UsageTest(unittest.TestCase):
         self.assertEqual(s["codex"]["reasoning"], 5)
         self.assertEqual(s["codex"]["latest_5h"], 34)
         self.assertEqual(s["codex"]["latest_week"], 61)
-        self.assertEqual(s["claude"]["runs"], 1)
-        self.assertEqual(s["claude"]["input"], 300)
+        self.assertEqual(s["claude"]["runs"], 2)
+        self.assertEqual(s["claude"]["input"], 1000)  # cache reads and writes count as input
+        self.assertEqual(s["claude"]["cached"], 600)
 
     def test_cli_json_and_empty(self):
         buf = io.StringIO()

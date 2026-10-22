@@ -2,7 +2,7 @@
 
 ## What it did in practice
 
-Measured on its first eight real pull requests:
+Measured on its first eight real pull requests (later numbers: [ten days of use](#ten-days-of-use-2026-10-13-to-2026-10-22)):
 
 - **It catches what the writer missed.** On a 28-file PR, the session that wrote it had already reviewed its own branch. pr-gate's reviewer still found a blocker: the release workflow would have refused every future tagged release. It was fixed before merge.
 - **It's fast.** A round (fresh review of the diff, the repo's docs and the CI logs) takes 1 to 5 minutes. A two-round PR goes from open to merged in about 15 to 20 minutes, and most of that is CI.
@@ -248,3 +248,27 @@ had medium findings). Caveat: small sample; re-check the threshold after 10 more
   Opus via agy both tried one, even when told not to), so no review came back; `--sandbox` with
   permissions skipped can read but also wrote a file when asked. Parked as a reviewer until agy has a
   read-only mode that can still read files.
+
+## Ten days of use, 2026-10-13 to 2026-10-22
+
+194 reviews over 92 PRs in five repos (a mobile-app repo, an orchestrator repo, a project-template
+repo, a CRM repo, one small repo), from `~/.pr-gate/usage.jsonl` and `~/.pr-gate/state`.
+
+- **Catches:** 353 findings: 28 blocker, 53 high, 230 medium, 42 low. Only one new high on a new
+  file appeared after round 1, so the first round sees nearly everything that matters.
+- **Rounds:** 242 in all, median 2 per PR. 14 PRs went past the 3-round cap with the user's OK
+  (up to 10 rounds). 94 findings (27%) were "still" repeats of an earlier one, and 97 of 156 fix
+  rounds had no high or blocker: the long tail is mediums going back and forth.
+- **Codex cost:** 70.7M input (62.2M cached) over 158 runs. Median per run: `gpt-6-luna` 107k / 24 s,
+  `gpt-6-sol` 372k / 94 s, `gpt-6.1-sol` medium 390k / 96 s, `gpt-6.1-sol` high 648k / 158 s.
+  Later rounds on `gpt-6.1-sol` used 25% (medium) and 43% (high) less input than round 1; on
+  `gpt-6-sol` they did not (392k vs 339k).
+- **Codex limits:** the 5-hour window passed 84% on 6 of 9 days (peak 99%); the week stayed under 60%.
+  7 runs started while the last reading was over the budget line.
+- **Cursor:** `composer-2.5` median 171 s; `grok-4.7-high` 640-830 s; `grok-4.7-xhigh` 850-1500 s,
+  and 2 of 5 runs hit the 25-minute timeout. Critical on Cursor now stays on `grok-4.7-high`.
+- **Claude:** 19 runs, $9.84 at API prices. `usage.py` counted only the uncached 4-300 input tokens;
+  it now adds Claude's cache reads and writes.
+- **Fixed with this entry:** `race` in the concurrency rule needs word boundaries (it matched
+  "Traceback"); `seats/seats.json` is now a synced copy of the orchestrator's seat file, and
+  `tests/test_seats.py` fails when the tier rules, a picked model or a pool drift from it.

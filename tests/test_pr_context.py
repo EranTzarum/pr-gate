@@ -391,6 +391,12 @@ class TierTest(unittest.TestCase):
         self.assertIn("secrets/perms+2", t["why"])
         self.assertIn("exec/shell+2", t["why"])
 
+    def test_race_needs_word_boundary(self):
+        quiet = pr_context.tier(["bin/tool.py"], "+++ b/bin/tool.py\n+print_traceback(err)\n", {})
+        self.assertNotIn("concurrency+1", quiet["why"])
+        loud = pr_context.tier(["bin/tool.py"], "+++ b/bin/tool.py\n+# avoid a race on save\n", {})
+        self.assertIn("concurrency+1", loud["why"])
+
     def test_code_in_tests_ignored(self):
         diff = ("+++ b/tests/test_tool.py\n"
                 "+os.chmod(p, 0o600)\n"

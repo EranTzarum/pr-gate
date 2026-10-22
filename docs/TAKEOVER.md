@@ -16,19 +16,15 @@ Read this first, then `AGENTS.md`, `SKILL.md`, and `docs/evals.md` (the evidence
   (contract in that folder's README, agreed with the factory); the Codex budget reads the newest
   reading from any tool.
 
-## Where we stopped (2026-10-22)
+## Where we stopped (2026-10-22, evening)
 
-Nothing in flight. Next, in order:
-1. **Usage analysis** of the last weeks of real runs (`~/.pr-gate/usage.jsonl`, `~/.pr-gate/state`,
-   `~/.pr-gate/work/*.out`): rounds per PR, tier picked vs findings, tokens and seconds per engine,
-   misses. Give a score, the numbers and recommendations, then fix what the data shows.
-2. **Fix the `concurrency` regex** in `TIER_CATS` (`scripts/pr_context.py`): `|race` has no word
-   boundary and matches inside "Traceback", so a docs PR quoting a traceback scores +1 (reported by
-   the factory, which already fixed its copy to `\brace\b`). Add a test.
-3. **Seats file:** after the factory's PR merges, sync with its `seats/seats.json` (haiku,
-   gpt-6-luna, gpt-5.6-luna and agy claude-sonnet-5-5-medium are now "qualified") and add the sync check.
-4. **README and docs** refresh from the analysis results (readmelyzer, public mode).
-- **Repo:** public, `main` only. Gate green: `py -3 -m unittest discover tests` (133 tests),
+Done: ten-day usage analysis (`docs/evals.md`, "Ten days of use"); `\brace\b`; Claude cache tokens
+counted in `usage.py`; agy Argon pool; Cursor critical = `grok-4.7-high` (xhigh timed out 2/5);
+`seats/seats.json` copied from the factory's main @ 2264d3c plus `tests/test_seats.py`.
+Open, waiting on the user's choice: should a round with only medium/low findings after round 2 go
+to the green report (mediums listed as follow-ups) instead of another fix round? 97 of 156 fix
+rounds were medium-only. Not built.
+- **Repo:** public, `main` only. Gate green: `py -3 -m unittest discover tests` (137 tests),
   `claude plugin test mod` (4). Installed for Claude Code through a junction in
   `~/.claude/skills/pr-gate`, so **this folder must stay on `main`**: every session loads the skill
   from whatever is checked out here. Codex and Cursor get **copies** (Windows and WSL) in

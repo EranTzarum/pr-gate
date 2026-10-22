@@ -14,6 +14,7 @@ The loop is in `SKILL.md`; the reviewer prompt is `references/review-prompt.md`.
 - `scripts/redact.py`: secret masking; every script's output passes through it.
 - `scripts/handoff.py`: writes a fix request to `~/.pr-gate/inbox/<key>.<sha8>.md`; `findings.key()` is the shared file-name key.
 - `mod/`: the inbox mod (Claude Code function hooks, TypeScript). Delivers inbox files to the session whose branch has the PR; status line. Its `keyOf` must match `findings.key()`.
+- `seats/seats.json`: a copy of the factory's seat file (read-only source). After changing `TIER_CATS`, `RISK`, `NON_CODE`, thresholds or `MODEL_TIERS`, the factory's copy must change too; `tests/test_seats.py` fails until the two agree.
 - `docs/evals.md`: live runs. `docs/automation.md`: unattended options (none enabled).
 
 ## Rules

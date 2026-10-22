@@ -37,7 +37,8 @@ MODEL_TIERS = {
     "claude": {"light": ("haiku", "medium"), "cheap": ("sonnet", "medium"),
                "strong": ("opus", "medium"), "critical": ("opus", "high")},
     "cursor": {"light": ("composer-2.5", None), "cheap": ("composer-2.5", None),
-               "strong": ("grok-4.7-high", None), "critical": ("grok-4.7-xhigh", None)},
+               # xhigh hit the 25 min timeout on 2 of 5 live runs (docs/evals.md, 2026-10-22)
+               "strong": ("grok-4.7-high", None), "critical": ("grok-4.7-high", None)},
     # agy bills two pools: Gemini (generous) and Claude/GPT (scarce, drains fast), like Cursor's
     # included bucket vs metered wallet. Gemini on every tier; Claude only at "critical", and
     # only Sonnet. Opus via agy is never picked automatically (--model or tier_models only).
