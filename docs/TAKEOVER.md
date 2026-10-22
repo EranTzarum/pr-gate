@@ -3,14 +3,31 @@
 For the "pr-gate skill" session: opened in the umbrella folder, working only inside `pr-gate/`.
 Read this first, then `AGENTS.md`, `SKILL.md`, and `docs/evals.md` (the evidence for every rule).
 
-## State (2026-10-13) · `main` after the review-cost landing
+## State (2026-10-22) · `main` @ `9c5429d`, clean, pushed, copies synced
 
 - **Cost work (2026-10-12):** usage ledger (`scripts/usage.py`), codex budget switch, round cap
   with `--extra-round`, round-2+ delta diff and docs digest, Cursor 25 min timeout; docs in
   `SKILL.md`, `references/engines.md`, evals section below.
-- **Tiers + agy (2026-10-13):** weighted `tier` score in `pr_context`, `light`/`cheap`/`strong`
-  model picks in `review.py`, Antigravity (`agy`) as a fourth read-only engine; docs in
-  `SKILL.md`, `references/engines.md`, evals "Reviewer tiers".
+- **Tiers (2026-10-13/14):** weighted `tier` score in `pr_context`; `light`/`cheap`/`strong`/`critical`
+  in `review.py` (`MODEL_TIERS`), one model step per tier with effort on every seat (codex
+  luna/6-sol/6.1-sol, claude haiku/sonnet/opus); agy stays on Gemini until critical (scarce
+  Claude/GPT pool); agy is a lean_run engine but parked as a reviewer.
+- **Shared usage file (2026-10-18):** every review appends to `~/.agent-usage/usage.jsonl`
+  (contract in that folder's README, agreed with the factory); the Codex budget reads the newest
+  reading from any tool.
+
+## Where we stopped (2026-10-22)
+
+Nothing in flight. Next, in order:
+1. **Usage analysis** of the last weeks of real runs (`~/.pr-gate/usage.jsonl`, `~/.pr-gate/state`,
+   `~/.pr-gate/work/*.out`): rounds per PR, tier picked vs findings, tokens and seconds per engine,
+   misses. Give a score, the numbers and recommendations, then fix what the data shows.
+2. **Fix the `concurrency` regex** in `TIER_CATS` (`scripts/pr_context.py`): `|race` has no word
+   boundary and matches inside "Traceback", so a docs PR quoting a traceback scores +1 (reported by
+   the factory, which already fixed its copy to `\brace\b`). Add a test.
+3. **Seats file:** after the factory's PR merges, sync with its `seats/seats.json` (haiku,
+   gpt-6-luna, gpt-5.6-luna and agy claude-sonnet-5-5-medium are now "qualified") and add the sync check.
+4. **README and docs** refresh from the analysis results (readmelyzer, public mode).
 - **Repo:** public, `main` only. Gate green: `py -3 -m unittest discover tests` (133 tests),
   `claude plugin test mod` (4). Installed for Claude Code through a junction in
   `~/.claude/skills/pr-gate`, so **this folder must stay on `main`**: every session loads the skill
