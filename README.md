@@ -11,7 +11,7 @@ A skill that reviews each pull request, sends the fixes back to the session that
 <a href="docs/reviewers.md"><img src="https://img.shields.io/badge/Codex-0058A0?style=for-the-badge&logo=openai&logoColor=white" alt="Codex"></a>
 <a href="docs/reviewers.md"><img src="https://img.shields.io/badge/Cursor-000000?style=for-the-badge&logo=cursor&logoColor=white" alt="Cursor"></a>
 <a href="#install-by-hand"><img src="https://img.shields.io/badge/Python_3-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python 3"></a>
-<a href="#install-by-hand"><img src="https://img.shields.io/badge/tests-137_passing-16A34A?style=for-the-badge" alt="137 tests passing"></a>
+<a href="#install-by-hand"><img src="https://img.shields.io/badge/tests-142_passing-16A34A?style=for-the-badge" alt="142 tests passing"></a>
 <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-052E16?style=for-the-badge" alt="MIT license"></a>
 
 <br>
@@ -20,7 +20,7 @@ A skill that reviews each pull request, sends the fixes back to the session that
 
 <br>
 
-<img src="docs/assets/stats.svg" alt="137 tests passing, 3 rounds max per PR, 61% less Codex input in later rounds, 92 real PRs reviewed" width="860">
+<img src="docs/assets/stats.svg" alt="142 tests passing, 3 rounds max per PR, 61% less Codex input in later rounds, 92 real PRs reviewed" width="860">
 
 </div>
 
@@ -35,7 +35,7 @@ A skill that reviews each pull request, sends the fixes back to the session that
 
 ```bash
 git clone https://github.com/EranTzarum/pr-gate.git ~/.claude/skills/pr-gate   # Codex: ~/.codex/skills, Cursor: ~/.cursor/skills
-cd ~/.claude/skills/pr-gate && python3 -m unittest discover tests   # expected: Ran 137 tests ... OK
+cd ~/.claude/skills/pr-gate && python3 -m unittest discover tests   # expected: Ran 142 tests ... OK
 ```
 
 Then, in a session inside your repo: `/pr-gate owner/repo 12`. You need [`gh`](https://cli.github.com) logged in, Python 3 and `git`. Reviewer login and preferences: [the five steps below](#install-by-hand).
@@ -76,7 +76,8 @@ Measured on real pull requests: [what it caught, how fast, what it costs](docs/e
   - a PR that touches auth, migrations, secrets, shell commands or deletes gets the strong one.
 - **Rounds 2+ re-read only what changed:** Codex used 61% fewer tokens on a real PR. Over 194 reviews in 10 days, later rounds on the top model used 25-43% fewer.
 - **Every review logs its cost.** See it with `python3 scripts/usage.py --since today` (`py -3` on Windows).
-- **A budget in config hands work from Codex to Cursor** before your limits run out.
+- **A budget in config hands work from Codex to Cursor** before your limits run out, paced by each window's reset time.
+- **Mediums don't loop forever:** at round 3 with green CI, leftover mediums become follow-ups. Every later review of that repo sees them until a PR fixes them.
 - **One seat list with an orchestrator:** `seats/seats.json` is a synced copy, and a test fails if the tier rules or a picked model drift from it.
 
 Details: [docs/reviewers.md](docs/reviewers.md).
@@ -101,7 +102,7 @@ Or by hand, in five steps:
 
 On Windows, `~` is `%USERPROFILE%`. Using two of these tools? Clone it once and copy (or link) the folder into the others.
 
-**2. Check it:** inside the skill folder, `python3 -m unittest discover tests` (`py -3` on Windows). Expected: `Ran 137 tests ... OK`. No network calls; `gh` is mocked.
+**2. Check it:** inside the skill folder, `python3 -m unittest discover tests` (`py -3` on Windows). Expected: `Ran 142 tests ... OK`. No network calls; `gh` is mocked.
 
 **3. Make sure your reviewer can answer.** Every reviewer is a plain CLI, so no plugin is needed to use a model from another tool. For each one you have:
 
@@ -113,11 +114,13 @@ On Windows, `~` is `%USERPROFILE%`. Using two of these tools? Clone it once and 
 
 Use the skill folder you cloned into in the test command. Use `cursor-agent`, not `agent`: other tools install an `agent` command too. More (models, what each one runs): [references/engines.md](references/engines.md).
 
-**4. Optional: save your preference** in `~/.pr-gate/config.json`, or just tell the agent *"review with Codex, and switch to Cursor when Codex is 80% used"* and it writes it:
+**4. Optional: save your preference** in `~/.pr-gate/config.json`, or just tell the agent *"review with Codex, and switch to Cursor before Codex runs out"* and it writes it:
 
 ```json
-{ "reviewer": "codex", "budget": { "codex_5h_max_pct": 80, "codex_week_max_pct": 90, "fallback": "cursor" } }
+{ "reviewer": "codex", "budget": { "codex_week_pace": [50, 100], "fallback": "cursor" } }
 ```
+
+The cap follows the reset clock: 50% while a week (or 5-hour window) is young, rising to 100% at its reset.
 
 **5. Run it** in a session inside your repo:
 

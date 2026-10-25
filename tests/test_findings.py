@@ -120,6 +120,42 @@ class StateTest(unittest.TestCase):
         st = findings.record("o/r", 9, "s1", "pass", "green", {})
         self.assertEqual(findings.next_action(st), "ask-merge")
 
+    def check(self, pr, sha, items, ci="pass", resolved=()):
+        root = Path(self.tmp.name) / "co"
+        (root / "src").mkdir(parents=True, exist_ok=True)
+        (root / "src" / "api.py").write_text("a\nb\nc\nd\n", encoding="utf-8")
+        raw = Path(self.tmp.name) / f"{sha}.out"
+        raw.write_text(json.dumps({"summary": "s", "findings": items, "resolved": list(resolved)}), encoding="utf-8")
+        from contextlib import redirect_stdout
+        import io
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            findings.main(["check", "--raw", str(raw), "--root", str(root), "--ci", ci,
+                           "--repo", "o/r", "--pr", str(pr), "--sha", sha])
+        return json.loads(buf.getvalue())
+
+    def test_mediums_at_cap_go_green_as_followups(self):
+        med = [f(severity="medium", title="edge path")]
+        self.assertEqual(self.check(10, "s1", med)["action"], "send-fix")
+        self.assertEqual(self.check(10, "s2", med)["action"], "send-fix")
+        out = self.check(10, "s3", med)
+        self.assertEqual((out["verdict"], out["action"]), ("green", "ask-merge"))
+        self.assertEqual([i["id"] for i in out["followups_added"]], ["10-1"])
+        self.assertEqual(self.check(10, "s3", med)["followups_added"], [])  # re-check adds nothing
+        # a high at the cap still escalates; CI failing too
+        self.assertEqual(self.check(11, "a", [f()])["action"], "send-fix")
+        self.check(11, "b", [f()])
+        self.assertEqual(self.check(11, "c", [f()])["action"], "escalate")
+
+    def test_later_pr_resolves_a_followup(self):
+        for sha in ("s1", "s2", "s3"):
+            self.check(12, sha, [f(severity="medium")])
+        self.assertEqual(len(findings.followups("o/r")), 1)
+        out = self.check(13, "n1", [], resolved=["12-1", "bogus"])
+        self.assertEqual(out["followups_closed"], ["12-1"])
+        self.assertEqual(out["followups_open"], [])
+        self.assertEqual(findings.followups("o/r", include_closed=True)[0]["closed_by"], "#13")
+
     def test_repo_name_is_sanitized(self):
         findings.record("../../evil", 1, "s", "pass", "green", {})
         names = os.listdir(Path(self.tmp.name) / "state")

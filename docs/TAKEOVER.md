@@ -21,10 +21,12 @@ Read this first, then `AGENTS.md`, `SKILL.md`, and `docs/evals.md` (the evidence
 Done: ten-day usage analysis (`docs/evals.md`, "Ten days of use"); `\brace\b`; Claude cache tokens
 counted in `usage.py`; agy Argon pool; Cursor critical = `grok-4.7-high` (xhigh timed out 2/5);
 `seats/seats.json` copied from the factory's main @ 2264d3c plus `tests/test_seats.py`.
-Open, waiting on the user's choice: should a round with only medium/low findings after round 2 go
-to the green report (mediums listed as follow-ups) instead of another fix round? 97 of 156 fix
-rounds were medium-only. Not built.
-- **Repo:** public, `main` only. Gate green: `py -3 -m unittest discover tests` (137 tests),
+2026-10-25 (the user's yes): round 3 with green CI and only medium/low goes green; the mediums
+become per-repo follow-ups (`~/.pr-gate/followups/`) carried into every later review and closed
+via the reviewer's `resolved` list. Codex budget is paced by each window's reset clock
+(`codex_<window>_pace`, default 50 -> 100%); the user's config uses it. Open idea: a `--branch`
+mode for reviews before a PR exists (one session did this by hand as "PR 0").
+- **Repo:** public, `main` only. Gate green: `py -3 -m unittest discover tests` (142 tests),
   `claude plugin test mod` (4). Installed for Claude Code through a junction in
   `~/.claude/skills/pr-gate`, so **this folder must stay on `main`**: every session loads the skill
   from whatever is checked out here. Codex and Cursor get **copies** (Windows and WSL) in

@@ -101,8 +101,8 @@ Exit 3 means it timed out and was killed; any other non-zero exit with an
   "effort": {"codex": "medium"},
   "risk_models": {"codex": "gpt-6.1-sol"},
   "budget": {
-    "codex_5h_max_pct": 80,
-    "codex_week_max_pct": 90,
+    "codex_5h_pace": [50, 100],
+    "codex_week_pace": [50, 100],
     "fallback": "cursor"
   }
 }
@@ -112,9 +112,13 @@ Exit 3 means it timed out and was killed; any other non-zero exit with an
 `strong` (default 5). `reviewer` is the engine when none is given. `models`/`effort` still apply
 to `light` and `cheap`; `risk_models` is a legacy alias for `strong` when `tier_models.strong`
 does not name that engine. `budget` is optional: before a codex run, `review.py` compares the
-latest logged codex `rate_limits` to these ceilings; at or over a set limit it runs `fallback`
-(`claude` or `cursor`, default `cursor`) and sets `budget_switch` in the result. Omit a
-key to ignore that window. Create this file when the user states a preference, then show it to
+latest codex reading of each window (5h, week) to a cap that follows that window's reset clock:
+`[start, end]` means `start`% when the window has just begun, rising in a straight line to `end`%
+at its reset (default `[50, 100]`, so a week spent early leaves room for the rest of it, and the
+last hours before a reset may use what is left). No reset time known → the `start` cap. An older
+flat `codex_5h_max_pct` / `codex_week_max_pct` is a ceiling on top. At or over the cap it runs
+`fallback` (`claude` or `cursor`, default `cursor`) and sets `budget_switch` (with `window` and
+`cap`) in the result. Create this file when the user states a preference, then show it to
 them.
 
 **Cursor as reviewer:** plan on 10-25 minutes for a real PR (the CLI reads roughly one file

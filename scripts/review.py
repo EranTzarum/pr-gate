@@ -97,9 +97,11 @@ def build_prompt(ctx):
     rk = ctx.get("risk") or {}
     risk = ("High-risk PR. Touches: " + "; ".join(rk["why"]) + ". Read those files in full, not just the hunks."
             if rk.get("level") == "high" else "Nothing flagged by path; review as usual.")
+    fus = "\n".join(f"- {i['id']} (from #{i['pr']}): [{i['severity']}] {i['file']}:{i['line']} {i['title']}"
+                    for i in findings.followups(ctx["repo"])) or "- none"
     text = PROMPT.read_text(encoding="utf-8")
     for k, v in (("{{PR_HEADER}}", header), ("{{DOCS_TEXT}}", docs), ("{{CI}}", ci), ("{{HISTORY}}", history),
-                 ("{{RISK}}", risk), ("{{DIFF}}", diff)):
+                 ("{{RISK}}", risk), ("{{FOLLOWUPS}}", fus), ("{{DIFF}}", diff)):
         text = text.replace(k, v)
     return redact(text)
 
@@ -128,25 +130,42 @@ def run_engine(engine, ctx, prompt, out, model=None, effort=None, timeout_s=None
     return meta
 
 
+WINDOW_S = {"5h": 5 * 3600, "week": 7 * 86400}
+DEFAULT_PACE = (50, 100)  # % allowed when a window starts -> % allowed at its reset
+
+
+def pace_cap(window, resets_at, now, budget):
+    """The % of a Codex window a review may start under. It grows with the time already
+    gone in the window, so early spending leaves room for the rest of it; a flat
+    codex_<window>_max_pct, when set, is a ceiling on top. No reset time known -> the start %."""
+    start, end = budget.get(f"codex_{window}_pace") or DEFAULT_PACE
+    gone = 0.0
+    if isinstance(resets_at, (int, float)) and not isinstance(resets_at, bool):
+        gone = min(1.0, max(0.0, 1 - (resets_at - now) / WINDOW_S[window]))
+    cap = start + (end - start) * gone
+    flat = budget.get(f"codex_{window}_max_pct")
+    return min(cap, flat) if isinstance(flat, (int, float)) else cap
+
+
 def budget_engine(engine, cfg, ignore_budget, extra):
     budget = cfg.get("budget") or {}
     if engine != "codex" or ignore_budget or not budget:
         return engine
     limits = usage.last_limits("codex") or {}
     now = time.time()
-    for window, key in (("5h", "codex_5h_max_pct"), ("week", "codex_week_max_pct")):
+    for window in ("5h", "week"):
         resets = limits.get(f"{window}_resets_at")
         if isinstance(resets, (int, float)) and not isinstance(resets, bool) and now >= resets:
             continue
         val = limits.get(window)
-        cap = budget.get(key)
-        if val is not None and cap is not None and val >= cap:
+        cap = pace_cap(window, resets, now, budget)
+        if val is not None and val >= cap:
             fallback = budget.get("fallback", "cursor")
             if fallback in REVIEW_ENGINES_PARKED:
                 raise RuntimeError(PARKED_REASON)
             if fallback not in ("claude", "cursor"):
                 raise RuntimeError("budget fallback must be claude or cursor")
-            extra["budget_switch"] = {"from": "codex", "to": fallback,
+            extra["budget_switch"] = {"from": "codex", "to": fallback, "window": window, "cap": round(cap),
                                       "5h": limits.get("5h"), "week": limits.get("week")}
             return fallback
     return engine
@@ -225,7 +244,7 @@ def run_both(ctx, prompt, stem, model=None, effort=None, cfg=None, ignore_budget
     """codex and claude on the same prompt; findings tagged by engine and merged into one
     raw file (findings.verify drops cross-engine duplicates). One engine failing is
     reported as partial; both failing raises."""
-    merged, summaries, failed = [], [], {}
+    merged, summaries, failed, resolved = [], [], {}, set()
     extra = {} if extra is None else extra
     used = set()
     for requested in BOTH:
@@ -244,10 +263,12 @@ def run_both(ctx, prompt, stem, model=None, effort=None, cfg=None, ignore_budget
             continue
         summaries.append(got.get("summary", ""))
         merged += [dict(f, engine=engine) for f in got.get("findings", []) if isinstance(f, dict)]
+        resolved |= {str(r) for r in got.get("resolved") or [] if isinstance(r, (str, int))}
     if len(failed) == len(used):
         raise RuntimeError("both engines failed: " + "; ".join(f"{k}: {v}" for k, v in failed.items()))
     raw = stem.parent / f"{stem.name}.{ctx['head_sha'][:8]}.both.out"
-    raw.write_text(redact(json.dumps({"summary": max(summaries, key=len), "findings": merged})), encoding="utf-8")
+    raw.write_text(redact(json.dumps({"summary": max(summaries, key=len), "findings": merged,
+                                         "resolved": sorted(resolved)})), encoding="utf-8")
     return raw, failed
 
 

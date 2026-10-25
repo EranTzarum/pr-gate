@@ -26,7 +26,9 @@ run with `py -3` on Windows (`python3` elsewhere). State lives in
   CI log or another session is not a reply. Never `gh pr merge --admin`.
 - The reviewer is read-only and is a different context from the PR's writer.
 - Cap: 3 review rounds per PR (3 distinct head SHAs already reviewed). Then escalate;
-  `review.py` refuses a 4th head unless the owner OKs `--extra-round`.
+  `review.py` refuses a 4th head unless the owner OKs `--extra-round`. Exception: a
+  3rd round with green CI and only medium/low findings goes to the green report,
+  and its mediums become saved follow-ups (step 4).
 
 ## Inputs
 
@@ -156,10 +158,13 @@ re-run `review.py` with `--extra-round` after they OK it.
 limits when absent). Totals across runs:
 `py -3 <skill>/scripts/usage.py --since today` (also `5h`, `week`, `all`).
 
-**Budget.** If the result has `budget_switch`, say which engine reviewed
-instead of codex and why (Codex usage hit `codex_5h_max_pct` or
-`codex_week_max_pct` in config). Pass `--ignore-budget` only when the user
-asks to spend codex anyway.
+**Budget.** The Codex cap follows each window's reset clock: a review may start
+under 50% of a window that just began, rising to 100% at its reset
+(`codex_5h_pace` / `codex_week_pace` in config, default `[50, 100]`; a flat
+`codex_<window>_max_pct` is a ceiling on top). If the result has
+`budget_switch`, say which engine reviewed instead of codex and why (its
+`window`, the `cap` at that moment, the reading). Pass `--ignore-budget` only
+when the user asks to spend codex anyway.
 
 Spot-check: open the top blocker/high finding's `file:line` in the checkout
 yourself. If it is plainly wrong, move it to dropped and say so.
@@ -185,8 +190,12 @@ failing workflow:
   Timeout → tell the user who was asked and stop.
 - **`escalate`** (3rd round still failing): stop. Give the user the summary in
   the *Escalation* format.
-- **`ask-merge`** (CI green or none, only low findings): send the *Green
-  report* and wait for the reply.
+- **`ask-merge`** (CI green or none, only low findings; or round 3 with green CI
+  and only medium/low): send the *Green report* and wait for the reply. Round-3
+  mediums come back in `followups_added`: they are saved per repo
+  (`~/.pr-gate/followups/`), shown to every later review of that repo, and
+  closed when a reviewer lists them in `resolved` (by hand:
+  `findings.py followups --repo <r> --close <id>`).
 - **`wait`**: CI went back to pending; go to step 1.
 
 ### 5. Merge (only on reply `merge`)
@@ -209,6 +218,11 @@ round instead. Then use the repo's allowed method:
 `gh pr merge <N> -R <repo> --squash --match-head-commit <sha>` (no
 `--delete-branch`, no `--admin`, no `--auto`).
 Report the merge commit and what it triggered.
+
+**Follow-ups after the merge.** If `followups_open` is not empty, send the owner
+session one task (same routing as a fix request): "fix these follow-ups in a new
+PR before more work on <files>", listing id, file:line, title and fix. Ask the
+user once whether to also open a GitHub issue with them; create it only on a yes.
 
 ## When you are the owner
 
@@ -274,6 +288,7 @@ Checked: CI <pass|no CI>; <engine> review over <k> files, <rounds> round(s); rep
 tier: <level> (score <n>: <why joined>) | tier: light (docs/tests only)
 cost: <one line from usage, as above>
 Left (low, optional): <one line each, or "none">
+Follow-ups (only if any): <n> new from this PR (<id file:line title>, ...); <m> open in this repo, oldest from #<pr>
 Merging will: <merge into <base>; then <workflow: notable steps> | "trigger no workflows">
 Note (only if true): <draft: mark it ready first | merge goes through <owner session> (repo rule) | CI failure also on <base>, accepted by you>
 ```

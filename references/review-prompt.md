@@ -28,6 +28,13 @@ Check first whether each earlier blocker/high/medium is really fixed. Keep the
 severity an issue had in an earlier round unless the new code changes the risk:
 re-grading a `low` as `medium` restarts the fix loop for nothing.
 
+## Open follow-ups in this repo
+
+{{FOLLOWUPS}}
+
+These were left from earlier PRs on purpose. Do not report them as findings. If
+this PR's code fixes one (check the file at head), put its id in `resolved`.
+
 ## Review, in this priority order
 
 1. **Security**: authentication and authorization, row-level security and
@@ -84,11 +91,12 @@ End your answer with exactly one fenced JSON block, and nothing after it:
       "scenario": "concrete failure scenario",
       "fix": "minimal fix"
     }
-  ]
+  ],
+  "resolved": ["ids of open follow-ups this PR fixes"]
 }
 ```
 
-An empty `findings` list is a valid answer.
+An empty `findings` list is a valid answer; leave `resolved` empty when nothing is fixed.
 
 ## The diff
 

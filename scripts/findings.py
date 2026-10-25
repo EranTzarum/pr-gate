@@ -159,6 +159,49 @@ def record(repo, pr, sha, ci, verdict, counts, kept=()):
     return st
 
 
+def _followups_path(repo):
+    d = home() / "followups"
+    d.mkdir(parents=True, exist_ok=True)
+    return d / (re.sub(r"[^A-Za-z0-9_-]+", "_", repo.replace("/", "__")).strip("_") + ".json")
+
+
+def followups(repo, include_closed=False):
+    """Mediums left behind when a PR went green at the round cap; carried into every later review."""
+    p = _followups_path(repo)
+    items = json.loads(p.read_text(encoding="utf-8")) if p.exists() else []
+    return items if include_closed else [i for i in items if not i.get("closed_by")]
+
+
+def _save_followups(repo, items):
+    _followups_path(repo).write_text(json.dumps(items, indent=2), encoding="utf-8")
+
+
+def add_followups(repo, pr, sha, kept):
+    items = followups(repo, include_closed=True)
+    known = {(i["pr"], i["file"], i["title"]) for i in items}
+    n = sum(1 for i in items if i["pr"] == int(pr))
+    added = []
+    for k in kept:
+        if (int(pr), k.get("file"), k.get("title")) in known:
+            continue  # same SHA re-checked
+        n += 1
+        added.append({"id": f"{int(pr)}-{n}", "pr": int(pr), "sha": sha,
+                      **{f: k.get(f) for f in ("severity", "file", "line", "title", "fix")}})
+    _save_followups(repo, items + added)
+    return added
+
+
+def close_followups(repo, ids, by):
+    items = followups(repo, include_closed=True)
+    closed = []
+    for i in items:
+        if i["id"] in ids and not i.get("closed_by"):
+            i["closed_by"] = by
+            closed.append(i["id"])
+    _save_followups(repo, items)
+    return closed
+
+
 def next_action(st):
     last = st["rounds"][-1]
     if last["verdict"] == "wait":
@@ -181,9 +224,17 @@ def main(argv=None):
     s = sub.add_parser("state")
     s.add_argument("--repo", required=True)
     s.add_argument("--pr", required=True, type=int)
+    f = sub.add_parser("followups")
+    f.add_argument("--repo", required=True)
+    f.add_argument("--close", nargs="*", default=[], help="ids fixed elsewhere (by hand)")
     a = ap.parse_args(argv)
     if a.cmd == "state":
         print(json.dumps(load(a.repo, a.pr), indent=2))
+        return 0
+    if a.cmd == "followups":
+        if a.close:
+            close_followups(a.repo, set(a.close), "hand")
+        print(json.dumps(followups(a.repo), indent=2))
         return 0
     try:
         out = extract(Path(a.raw).read_text(encoding="utf-8", errors="replace"))
@@ -193,10 +244,20 @@ def main(argv=None):
     kept, dropped = verify(out.get("findings", []), a.root)
     verdict = gate(a.ci, kept)
     counts = {s: sum(1 for k in kept if k["severity"] == s) for s in SEVERITIES}
+    round_no = len([r for r in load(a.repo, a.pr)["rounds"] if r["sha"] != a.sha]) + 1
+    added = []
+    # At the cap, a round with only mediums/lows and green CI goes to the merge report; the
+    # mediums become follow-ups that every later review of this repo sees until one fixes them.
+    if verdict == "fix" and a.ci == "pass" and round_no >= MAX_ROUNDS and not (counts["blocker"] or counts["high"]):
+        verdict = "green"
+        added = add_followups(a.repo, a.pr, a.sha, [k for k in kept if k["severity"] == "medium"])
+    resolved = [str(r) for r in out.get("resolved") or [] if isinstance(r, (str, int))]
+    closed = close_followups(a.repo, set(resolved), f"#{a.pr}") if resolved else []
     st = record(a.repo, a.pr, a.sha, a.ci, verdict, counts, kept)
     print(json.dumps({"summary": out.get("summary", ""), "kept": kept, "dropped": dropped,
                       "verdict": verdict, "round": len(st["rounds"]),
-                      "action": next_action(st)}, indent=2))
+                      "action": next_action(st), "followups_added": added,
+                      "followups_closed": closed, "followups_open": followups(a.repo)}, indent=2))
     return 0
 
 

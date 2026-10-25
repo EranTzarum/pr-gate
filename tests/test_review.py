@@ -416,6 +416,14 @@ class ReviewCostTest(unittest.TestCase):
         delta.unlink()
         self.assertIn("+const x = 1", review.build_prompt(self.ctx))
 
+    def test_open_followups_in_prompt(self):
+        self.assertIn("## Open follow-ups in this repo\n\n- none", review.build_prompt(self.ctx))
+        review.findings.add_followups(self.ctx["repo"], 2, "s", [{"severity": "medium", "file": "a.py",
+                                                                    "line": 4, "title": "edge"}])
+        prompt = review.build_prompt(self.ctx)
+        self.assertIn("- 2-1 (from #2): [medium] a.py:4 edge", prompt)
+        self.assertNotIn("{{FOLLOWUPS}}", prompt)
+
     def test_delta_is_capped(self):
         delta = self.home / "delta.diff"
         delta.write_text("+x\n" * (review.DIFF_MAX_CHARS // 3 + 1) + "TAIL", encoding="utf-8")
@@ -505,7 +513,8 @@ class ReviewCostTest(unittest.TestCase):
             rc, out = self.run_main("--engine", "codex", "--model", "gpt-6-luna", "--effort", "high")
         self.assertEqual(rc, 0)
         self.assertEqual(self.calls[0][:3], ("cursor", "composer-2.5", None))
-        self.assertEqual(out["budget_switch"], {"from": "codex", "to": "cursor", "5h": 85, "week": 20})
+        self.assertEqual(out["budget_switch"], {"from": "codex", "to": "cursor", "window": "5h", "cap": 50,
+                                                "5h": 85, "week": 20})
         self.assertEqual(set(out["usage"]), {"cursor"})
 
     def test_ignore_budget(self):
@@ -543,6 +552,26 @@ class ReviewCostTest(unittest.TestCase):
             _, out = self.run_main("--engine", "codex")
         self.assertEqual(self.calls[-1][0], "cursor")
         self.assertIn("budget_switch", out)
+
+    def test_pace_cap_follows_the_reset_clock(self):
+        now, week = 1_000_000.0, review.WINDOW_S["week"]
+        pace = {"codex_week_pace": [50, 100]}
+        self.assertEqual(review.pace_cap("week", now + week, now, pace), 50)       # window just started
+        self.assertEqual(review.pace_cap("week", now + week / 2, now, pace), 75)   # half way
+        self.assertEqual(review.pace_cap("week", now + 60, now, pace), 100 - 50 * 60 / week)  # about to reset
+        self.assertEqual(review.pace_cap("week", None, now, pace), 50)             # unknown: careful
+        self.assertEqual(review.pace_cap("5h", now + 1, now, {"codex_5h_max_pct": 80}), 80)  # flat ceiling
+        self.assertEqual(review.pace_cap("5h", now + review.WINDOW_S["5h"], now, {}), review.DEFAULT_PACE[0])
+
+    def test_week_spent_early_switches_late_does_not(self):
+        (self.home / "config.json").write_text(json.dumps({"budget": {"fallback": "cursor"}}), encoding="utf-8")
+        now, week = time.time(), review.WINDOW_S["week"]
+        with patch.object(review.usage, "last_limits", return_value={"week": 60, "week_resets_at": now + week - 3600}):
+            _, out = self.run_main("--engine", "codex")
+        self.assertEqual(out["budget_switch"]["window"], "week")
+        with patch.object(review.usage, "last_limits", return_value={"week": 60, "week_resets_at": now + 3600}):
+            _, out = self.run_main("--engine", "codex")
+        self.assertNotIn("budget_switch", out)
 
     def test_both_usage_and_budget_switch(self):
         _, out = self.run_main("--engine", "both")
