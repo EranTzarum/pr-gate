@@ -202,8 +202,8 @@ def hotspots(repo, exclude_pr=None):
         state_dir = findings.home() / "state"
         if not state_dir.is_dir():
             return counts
-        prefix = findings.key(repo, 0)[:-1]
-        exclude_name = f"{findings.key(repo, int(exclude_pr))}.json" if exclude_pr is not None else None
+        prefix = findings.key(repo, 1)[:-1]
+        exclude_name = f"{findings.key(repo, exclude_pr)}.json" if exclude_pr is not None else None
         for p in state_dir.iterdir():
             if not p.is_file() or not p.name.startswith(prefix) or not p.name.endswith(".json"):
                 continue
@@ -215,12 +215,8 @@ def hotspots(repo, exclude_pr=None):
                 continue
             if not isinstance(st, dict):
                 continue
-            if exclude_pr is not None and st.get("pr") is not None:
-                try:
-                    if int(st["pr"]) == int(exclude_pr):
-                        continue
-                except (ValueError, TypeError):
-                    pass
+            if exclude_pr is not None and str(st.get("pr")) == str(findings.pr_id(exclude_pr)):
+                continue
             findings_list = []
             if isinstance(st.get("rounds"), list):
                 for rnd in st["rounds"]:
@@ -470,15 +466,9 @@ def gather(repo, pr, work):
     root = work / f"{safe}__checkout"
     checkout(repo, pr, root)
     files = [f.get("path") for f in view.get("files") or []]
-    docs = repo_docs(root)
     head_sha = view.get("headRefOid")
-    st = findings.load(repo, pr)
-    prior = [r["sha"] for r in (st.get("rounds") or []) if r.get("sha") and r.get("sha") != head_sha]
-    last_reviewed_sha = prior[-1] if prior else None
-    delta_file, delta_note = delta_diff(root, last_reviewed_sha, head_sha, work, safe, pr)
-    docs_digest_file = docs_digest(root, docs, work, safe, pr)
     ctx = {
-        "repo": repo, "pr": pr, "url": view.get("url"), "title": view.get("title"),
+        "repo": repo, "pr": pr, "mode": "pr", "url": view.get("url"), "title": view.get("title"),
         "body": redact(view.get("body") or ""), "author": (view.get("author") or {}).get("login"),
         "head": view.get("headRefName"), "head_sha": head_sha,
         "base": base, "draft": view.get("isDraft"),
@@ -492,33 +482,115 @@ def gather(repo, pr, work):
         "checks": [{k: c.get(k) for k in ("name", "bucket", "workflow")} for c in checks],
         "base_ci": base_ci(repo, base, checks),
         "failed_logs": redact("\n".join(logs))[:LOG_MAX_CHARS],
-        "checkout": str(root), "diff_file": str(diff_file),
+        "diff_file": str(diff_file),
+    }
+    # A branch reviewed before its PR opened: show those rounds and review only what came after.
+    branch_rounds = []
+    if view.get("headRefName"):
+        try:
+            branch_rounds = findings.load(repo, f"branch:{view['headRefName']}")["rounds"]
+        except ValueError:
+            pass  # a head name branch mode would refuse
+    return _finish(ctx, root, diff_text, work, safe, branch_rounds)
+
+
+def _finish(ctx, root, diff_text, work, safe, branch_rounds=()):
+    """The part every context shares: round history, delta, docs, rules, risk, tier; then save."""
+    repo, pr, head_sha, files, base = ctx["repo"], ctx["pr"], ctx["head_sha"], ctx["files"], ctx["base"]
+    docs = repo_docs(root)
+    st = findings.load(repo, pr)
+    prior = [r["sha"] for r in list(branch_rounds) + (st.get("rounds") or [])
+             if r.get("sha") and r.get("sha") != head_sha]
+    last_reviewed_sha = prior[-1] if prior else None
+    slug = findings.key(repo, pr).rsplit("__", 1)[1]
+    delta_file, delta_note = delta_diff(root, last_reviewed_sha, head_sha, work, safe, slug)
+    ctx.update({
+        "checkout": str(root),
+        "branch_rounds": [r for r in branch_rounds if r.get("sha") != head_sha],
         "last_reviewed_sha": last_reviewed_sha,
         "delta_diff_file": delta_file,
         "delta_note": delta_note,
         "docs": docs,
-        "docs_digest_file": docs_digest_file,
+        "docs_digest_file": docs_digest(root, docs, work, safe, slug),
         "merge_rules": merge_rules(root, docs),
         "merge_triggers": merge_triggers(root, base, files),
         "risk": risk(files),
         "tier": tier(files, diff_text, hotspots(repo, pr)),
-    }
-    out = work / f"{safe}__{pr}.json"
+    })
+    out = Path(work) / f"{safe}__{slug}.json"
     out.write_text(json.dumps(ctx, indent=2), encoding="utf-8")
     ctx["context_file"] = str(out)
     return ctx
 
 
+def gather_branch(repo, branch, work, src=None, base="main"):
+    """Context for a branch with no PR yet: from origin, or from a local repo (--from) so an
+    unpushed branch works too. No CI, no gh calls beyond the first clone."""
+    pr = findings.pr_id(f"branch:{branch}")
+    if not re.fullmatch(r"[A-Za-z0-9._/-]{1,100}", base) or ".." in base:
+        raise ValueError(f"bad base branch: {base!r}")
+    work = Path(work)
+    work.mkdir(parents=True, exist_ok=True)
+    safe = re.sub(r"[^A-Za-z0-9_-]+", "_", repo.replace("/", "__"))
+    root = work / f"{safe}__checkout"
+    if not (root / ".git").exists():
+        run(["gh", "repo", "clone", repo, str(root), "--", "--filter=blob:none", "--no-checkout"])
+    g = ["git", "-C", str(root)]
+    run(g + ["fetch", "--quiet", "origin", f"+refs/heads/{base}:refs/remotes/origin/{base}"])
+    run(g + ["fetch", "--quiet", str(src) if src else "origin", f"refs/heads/{branch}"])
+    run(g + ["checkout", "--quiet", "--detach", "--force", "FETCH_HEAD"])
+    head_sha = run(g + ["rev-parse", "HEAD"]).strip()
+    mb = run(g + ["merge-base", f"origin/{base}", "HEAD"]).strip()
+    diff_text = redact(run(g + ["diff", mb, "HEAD"]))
+    diff_file = work / f"{safe}__{findings.key(repo, pr).rsplit('__', 1)[1]}.diff"
+    diff_file.write_text(diff_text, encoding="utf-8")
+    files = [f for f in run(g + ["diff", "--name-only", mb, "HEAD"]).splitlines() if f.strip()]
+    adds = dels = 0
+    for line in run(g + ["diff", "--numstat", mb, "HEAD"]).splitlines():
+        a, d = (line.split("\t") + ["", ""])[:2]
+        adds += int(a) if a.isdigit() else 0  # "-" for binary files
+        dels += int(d) if d.isdigit() else 0
+    subjects = [s for s in run(g + ["log", "--format=%s", f"{mb}..HEAD"]).splitlines() if s.strip()]
+    behind = run(g + ["rev-list", "--count", f"HEAD..origin/{base}"], check=False).strip()
+    ctx = {
+        "repo": repo, "pr": pr, "mode": "branch", "branch": branch, "from": str(src) if src else None,
+        "url": None, "title": redact(subjects[0] if subjects else branch),
+        "body": redact("Commits on this branch:\n" + "\n".join(f"- {s}" for s in subjects)),
+        "author": None, "head": branch, "head_sha": head_sha, "base": base, "draft": False,
+        "mergeable": None, "merge_state": None, "behind_base": int(behind) if behind.isdigit() else None,
+        "size": {"files": len(files), "additions": adds, "deletions": dels}, "files": files,
+        "owner": None, "ci": "none", "checks": [], "base_ci": {}, "failed_logs": "",
+        "diff_file": str(diff_file),
+    }
+    return _finish(ctx, root, diff_text, work, safe)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("repo", help="owner/name")
-    ap.add_argument("pr", type=int)
+    ap.add_argument("pr", type=int, nargs="?")
+    ap.add_argument("--branch", help="review a branch before its PR exists")
+    ap.add_argument("--from", dest="src", help="local repo to fetch the branch from (unpushed branches)")
+    ap.add_argument("--base", default="main", help="with --branch: the branch it will merge into")
     ap.add_argument("--work", default=str(Path.home() / ".pr-gate" / "work"))
     a = ap.parse_args(argv)
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", a.repo):
         ap.error("repo must be owner/name")
-    ctx = gather(a.repo, a.pr, a.work)
-    print(json.dumps({k: ctx[k] for k in ("context_file", "ci", "base_ci", "head_sha", "draft",
+    if (a.pr is None) == (a.branch is None):
+        ap.error("give a PR number or --branch, not both")
+    if a.pr is not None and a.pr < 1:
+        ap.error("PR number must be 1 or more; before a PR exists use --branch")
+    if a.src and not Path(a.src, ".git").exists():
+        ap.error("--from must be a local git checkout")
+    if a.pr:
+        ctx = gather(a.repo, a.pr, a.work)
+    else:
+        try:
+            findings.pr_id(f"branch:{a.branch}")
+        except ValueError as e:
+            ap.error(str(e))
+        ctx = gather_branch(a.repo, a.branch, a.work, a.src, a.base)
+    print(json.dumps({k: ctx.get(k) for k in ("context_file", "mode", "branch", "ci", "base_ci", "head_sha", "draft",
                                           "merge_state", "behind_base", "owner", "docs",
                                           "merge_rules", "merge_triggers", "risk", "size",
                                           "last_reviewed_sha", "delta_diff_file", "delta_note",

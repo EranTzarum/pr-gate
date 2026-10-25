@@ -24,9 +24,12 @@ counted in `usage.py`; agy Argon pool; Cursor critical = `grok-4.7-high` (xhigh 
 2026-10-25 (the user's yes): round 3 with green CI and only medium/low goes green; the mediums
 become per-repo follow-ups (`~/.pr-gate/followups/`) carried into every later review and closed
 via the reviewer's `resolved` list. Codex budget is paced by each window's reset clock
-(`codex_<window>_pace`, default 50 -> 100%); the user's config uses it. Open idea: a `--branch`
-mode for reviews before a PR exists (one session did this by hand as "PR 0").
-- **Repo:** public, `main` only. Gate green: `py -3 -m unittest discover tests` (142 tests),
+(`codex_<window>_pace`, default 50 -> 100%); the user's config uses it.
+Branch mode (2026-10-25): `pr_context.py <repo> --branch <name> [--from <checkout>]`, state key
+`branch:<name>`, `ready-for-pr` instead of `ask-merge`, PR 0 refused, a PR's first round carries the
+branch rounds. Proven live on a throwaway local branch. Still to see on a real PR: a round-3
+follow-up being listed and closed by a later review, a paced `budget_switch`, and the branch -> PR carry-over.
+- **Repo:** public, `main` only. Gate green: `py -3 -m unittest discover tests` (148 tests),
   `claude plugin test mod` (4). Installed for Claude Code through a junction in
   `~/.claude/skills/pr-gate`, so **this folder must stay on `main`**: every session loads the skill
   from whatever is checked out here. Codex and Cursor get **copies** (Windows and WSL) in

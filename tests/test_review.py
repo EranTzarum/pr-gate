@@ -416,6 +416,19 @@ class ReviewCostTest(unittest.TestCase):
         delta.unlink()
         self.assertIn("+const x = 1", review.build_prompt(self.ctx))
 
+    def test_branch_mode_header_history_and_cap(self):
+        self.ctx.update(mode="branch", branch="feat/x", pr="branch:feat/x")
+        self.assertIn("o/r branch feat/x (no PR yet):", review.build_prompt(self.ctx))
+        self.ctx.update(mode="pr", pr=5, branch_rounds=[{"sha": "b1", "findings": []}])
+        self.assertIn("- round 1 @ b1: no findings", review.build_prompt(self.ctx))
+        # three rounds on one branch don't count against another branch or the PR
+        for sha in ("a1", "a2", "a3"):
+            review.findings.record("o/r", "branch:other", sha, "none", "fix", {})
+        self.ctx.pop("branch_rounds")
+        self.context_file.write_text(json.dumps(self.ctx), encoding="utf-8")
+        rc, _ = self.run_main("--engine", "codex")
+        self.assertEqual(rc, 0)
+
     def test_open_followups_in_prompt(self):
         self.assertIn("## Open follow-ups in this repo\n\n- none", review.build_prompt(self.ctx))
         review.findings.add_followups(self.ctx["repo"], 2, "s", [{"severity": "medium", "file": "a.py",

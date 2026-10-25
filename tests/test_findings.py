@@ -156,6 +156,31 @@ class StateTest(unittest.TestCase):
         self.assertEqual(out["followups_open"], [])
         self.assertEqual(findings.followups("o/r", include_closed=True)[0]["closed_by"], "#13")
 
+    def test_pr_id_and_branch_keys(self):
+        self.assertEqual(findings.pr_id("12"), 12)
+        self.assertEqual(findings.pr_id("branch:feat/x"), "branch:feat/x")
+        for bad in (0, "0", -1, "branch:../x", "branch:-x", "branch:", "feat/x", True):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                findings.pr_id(bad)
+        self.assertEqual(findings.key("o/r", 5), "o__r__5")  # the inbox mod's keyOf depends on it
+        self.assertEqual(findings.key("o/r", "branch:feat/x"), "o__r__b-feat_x")
+        findings.record("o/r", "branch:a", "s1", "none", "fix", {})
+        findings.record("o/r", "branch:b", "s2", "none", "fix", {})
+        self.assertEqual(len(findings.load("o/r", "branch:a")["rounds"]), 1)  # no shared "PR 0" pile
+
+    def test_branch_mode_ends_ready_for_pr(self):
+        root = Path(self.tmp.name) / "co"
+        root.mkdir()
+        raw = Path(self.tmp.name) / "r.out"
+        raw.write_text('{"summary": "s", "findings": []}', encoding="utf-8")
+        from contextlib import redirect_stdout
+        import io
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            findings.main(["check", "--raw", str(raw), "--root", str(root), "--ci", "none", "--repo", "o/r",
+                           "--pr", "branch:feat/x", "--sha", "s1", "--mode", "branch"])
+        self.assertEqual(json.loads(buf.getvalue())["action"], "ready-for-pr")
+
     def test_repo_name_is_sanitized(self):
         findings.record("../../evil", 1, "s", "pass", "green", {})
         names = os.listdir(Path(self.tmp.name) / "state")

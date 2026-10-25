@@ -33,6 +33,8 @@ run with `py -3` on Windows (`python3` elsewhere). State lives in
 ## Inputs
 
 `/pr-gate <owner/repo> <PR#> [--reviewer codex|claude|both|cursor|subagent] [--model M] [--effort E]`
+or, before a PR exists, `/pr-gate <owner/repo> --branch <name> [--from <local checkout>]` (see
+*Before a PR exists*). Never review with PR number 0: the scripts refuse it.
 
 **Reviewer tiers** (`cheap` by default): `light` when the PR changes only docs or
 tests; `strong` when the context tier score is at least `tier_threshold` (default
@@ -223,6 +225,24 @@ Report the merge commit and what it triggered.
 session one task (same routing as a fix request): "fix these follow-ups in a new
 PR before more work on <files>", listing id, file:line, title and fix. Ask the
 user once whether to also open a GitHub issue with them; create it only on a yes.
+
+## Before a PR exists
+
+"Review my branch" with no PR yet. Each branch keeps its own rounds and its own cap of 3.
+
+1. Context, no CI wait:
+   ```bash
+   py -3 <skill>/scripts/pr_context.py <owner/repo> --branch <name> [--from <local checkout>] [--base main]
+   ```
+   `--from` fetches the branch from a local repo, so it need not be pushed; it reads only.
+   Commit first: uncommitted changes are not reviewed.
+2. Review exactly as in step 3 (`review.py <context_file> ...`). It tells the reviewer this is a
+   branch, not a PR.
+3. Act on `action` as in step 4, except that `ready-for-pr` replaces `ask-merge`: report
+   "ready to open a PR", with the same tier, cost and follow-up lines. Never merge, push or open
+   the PR yourself; the owner opens it.
+4. When the PR opens, its first round sees the branch rounds and reviews only what changed after
+   the last branch review. The PR's own cap starts at 0.
 
 ## When you are the owner
 

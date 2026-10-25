@@ -1,9 +1,9 @@
 """Parse, verify and gate reviewer findings; keep per-PR round state.
 
   py -3 findings.py check --raw review.out --root <checkout> --ci pass|fail|pending|none \
-      --repo owner/name --pr N --sha <head>
+      --repo owner/name --pr N|branch:<name> --sha <head> [--mode branch]
 prints JSON: {summary, kept, dropped, verdict, round, action}
-  action: wait | send-fix | escalate | ask-merge
+  action: wait | send-fix | escalate | ask-merge | ready-for-pr (branch mode)
 """
 import argparse
 import json
@@ -130,9 +130,34 @@ def home():
     return Path(os.environ.get("PR_GATE_HOME") or Path.home() / ".pr-gate")
 
 
+BRANCH_RE = re.compile(r"branch:([A-Za-z0-9._/-]{1,100})")
+
+
+def pr_id(value):
+    """A PR number (>= 1) or `branch:<name>` for a branch with no PR yet. Anything else,
+    PR 0 included, is refused: every branch needs its own state and round cap."""
+    if isinstance(value, int) and not isinstance(value, bool):
+        n = value
+    elif isinstance(value, str) and value.isdigit():
+        n = int(value)
+    else:
+        m = BRANCH_RE.fullmatch(str(value))
+        if not m or ".." in m.group(1) or m.group(1).startswith(("/", "-")):
+            raise ValueError(f"not a PR number or branch:<name>: {value!r}")
+        return f"branch:{m.group(1)}"
+    if n < 1:
+        raise ValueError("PR number must be 1 or more (use branch:<name> before a PR exists)")
+    return n
+
+
+def _slug(pr):
+    pr = pr_id(pr)
+    return str(pr) if isinstance(pr, int) else "b-" + re.sub(r"[^A-Za-z0-9_-]+", "_", pr[len("branch:"):])
+
+
 def key(repo, pr):
     """File-name key for one PR, shared by state/, inbox/ and the inbox mod (mod/hooks/register.ts)."""
-    return re.sub(r"[^A-Za-z0-9_-]+", "_", repo.replace("/", "__")).strip("_") + f"__{int(pr)}"
+    return re.sub(r"[^A-Za-z0-9_-]+", "_", repo.replace("/", "__")).strip("_") + f"__{_slug(pr)}"
 
 
 def _state_path(repo, pr):
@@ -143,7 +168,7 @@ def _state_path(repo, pr):
 
 def load(repo, pr):
     p = _state_path(repo, pr)
-    return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {"repo": repo, "pr": int(pr), "rounds": []}
+    return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {"repo": repo, "pr": pr_id(pr), "rounds": []}
 
 
 def record(repo, pr, sha, ci, verdict, counts, kept=()):
@@ -178,14 +203,15 @@ def _save_followups(repo, items):
 
 def add_followups(repo, pr, sha, kept):
     items = followups(repo, include_closed=True)
+    pr = pr_id(pr)
     known = {(i["pr"], i["file"], i["title"]) for i in items}
-    n = sum(1 for i in items if i["pr"] == int(pr))
+    n = sum(1 for i in items if i["pr"] == pr)
     added = []
     for k in kept:
-        if (int(pr), k.get("file"), k.get("title")) in known:
+        if (pr, k.get("file"), k.get("title")) in known:
             continue  # same SHA re-checked
         n += 1
-        added.append({"id": f"{int(pr)}-{n}", "pr": int(pr), "sha": sha,
+        added.append({"id": f"{_slug(pr)}-{n}", "pr": pr, "sha": sha,
                       **{f: k.get(f) for f in ("severity", "file", "line", "title", "fix")}})
     _save_followups(repo, items + added)
     return added
@@ -202,12 +228,12 @@ def close_followups(repo, ids, by):
     return closed
 
 
-def next_action(st):
+def next_action(st, mode="pr"):
     last = st["rounds"][-1]
     if last["verdict"] == "wait":
         return "wait"
     if last["verdict"] == "green":
-        return "ask-merge"
+        return "ready-for-pr" if mode == "branch" else "ask-merge"
     return "escalate" if len(st["rounds"]) >= MAX_ROUNDS else "send-fix"
 
 
@@ -219,11 +245,12 @@ def main(argv=None):
     c.add_argument("--root", required=True)
     c.add_argument("--ci", required=True, choices=["pass", "fail", "pending", "none"])
     c.add_argument("--repo", required=True)
-    c.add_argument("--pr", required=True, type=int)
+    c.add_argument("--pr", required=True, type=pr_id)
     c.add_argument("--sha", required=True)
+    c.add_argument("--mode", choices=["pr", "branch"], default="pr")
     s = sub.add_parser("state")
     s.add_argument("--repo", required=True)
-    s.add_argument("--pr", required=True, type=int)
+    s.add_argument("--pr", required=True, type=pr_id)
     f = sub.add_parser("followups")
     f.add_argument("--repo", required=True)
     f.add_argument("--close", nargs="*", default=[], help="ids fixed elsewhere (by hand)")
@@ -248,15 +275,16 @@ def main(argv=None):
     added = []
     # At the cap, a round with only mediums/lows and green CI goes to the merge report; the
     # mediums become follow-ups that every later review of this repo sees until one fixes them.
-    if verdict == "fix" and a.ci == "pass" and round_no >= MAX_ROUNDS and not (counts["blocker"] or counts["high"]):
+    if verdict == "fix" and a.ci in ("pass", "none") and round_no >= MAX_ROUNDS and not (counts["blocker"] or counts["high"]):
         verdict = "green"
         added = add_followups(a.repo, a.pr, a.sha, [k for k in kept if k["severity"] == "medium"])
     resolved = [str(r) for r in out.get("resolved") or [] if isinstance(r, (str, int))]
-    closed = close_followups(a.repo, set(resolved), f"#{a.pr}") if resolved else []
+    by = f"#{a.pr}" if isinstance(a.pr, int) else a.pr
+    closed = close_followups(a.repo, set(resolved), by) if resolved else []
     st = record(a.repo, a.pr, a.sha, a.ci, verdict, counts, kept)
     print(json.dumps({"summary": out.get("summary", ""), "kept": kept, "dropped": dropped,
                       "verdict": verdict, "round": len(st["rounds"]),
-                      "action": next_action(st), "followups_added": added,
+                      "action": next_action(st, a.mode), "followups_added": added,
                       "followups_closed": closed, "followups_open": followups(a.repo)}, indent=2))
     return 0
 

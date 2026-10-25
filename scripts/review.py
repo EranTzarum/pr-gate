@@ -73,7 +73,8 @@ def build_prompt(ctx):
                 + diff + "\n\n### All files this PR changes\n\n"
                 + "\n".join(f"- {f}" for f in ctx["files"])
                 + "\n\nCheck the earlier findings first, then review the changed lines; open other changed files only to confirm a finding.")
-    header = (f"{ctx['repo']} #{ctx['pr']}: {ctx['title']}\n"
+    name = f"branch {ctx['branch']} (no PR yet)" if ctx.get("mode") == "branch" else f"#{ctx['pr']}"
+    header = (f"{ctx['repo']} {name}: {ctx['title']}\n"
               f"Branch {ctx['head']} -> {ctx['base']}, {ctx['size']['files']} files, "
               f"+{ctx['size']['additions']}/-{ctx['size']['deletions']}\n\nDescription:\n{ctx['body']}")
     docs = "\n".join(f"- {d}" for d in ctx["docs"]) or "- (none found; use the code's own conventions)"
@@ -90,6 +91,7 @@ def build_prompt(ctx):
         ci += (f". The PR is {ctx.get('behind_base')} commit(s) behind {ctx['base']}. If the base fails the same "
                "way, the PR did not cause it: say so in the finding's scenario.")
     earlier = [r for r in findings.load(ctx["repo"], ctx["pr"])["rounds"] if r["sha"] != ctx["head_sha"]]
+    earlier = (ctx.get("branch_rounds") or []) + earlier  # rounds on the branch before its PR opened
     history = "\n".join(
         f"- round {n} @ {r['sha'][:8]}: " + ("; ".join(
             f"[{i['severity']}] {i['file']}:{i['line']} {i['title']}" for i in r.get("findings", [])) or "no findings")
@@ -336,7 +338,8 @@ def main(argv=None):
     buf = io.StringIO()
     with redirect_stdout(buf):
         rc = findings.main(["check", "--raw", str(raw), "--root", ctx["checkout"], "--ci", ctx["ci"],
-                            "--repo", ctx["repo"], "--pr", str(ctx["pr"]), "--sha", ctx["head_sha"]])
+                            "--repo", ctx["repo"], "--pr", str(ctx["pr"]), "--sha", ctx["head_sha"],
+                            "--mode", ctx.get("mode") or "pr"])
     out = json.loads(buf.getvalue())
     if rc == 2:  # no findings JSON: show what the engine said (a login error reads as nothing otherwise)
         extra["engine_output"] = raw.read_text(encoding="utf-8", errors="replace").strip()[:400]

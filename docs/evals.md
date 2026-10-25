@@ -269,6 +269,13 @@ repo, a CRM repo, one small repo), from `~/.pr-gate/usage.jsonl` and `~/.pr-gate
   and 2 of 5 runs hit the 25-minute timeout. Critical on Cursor now stays on `grok-4.7-high`.
 - **Claude:** 19 runs, $9.84 at API prices. `usage.py` counted only the uncached 4-300 input tokens;
   it now adds Claude's cache reads and writes.
+- **A branch review before any PR** (one session built a context by hand with PR number 0): it
+  found 2 real blockers, but every branch reviewed that way shared one state file, so they piled
+  up to 10 "rounds" and the cap never applied. Since 2026-10-25 `--branch` gives each branch its
+  own state and cap, and PR 0 is refused. Live check the same day: an unpushed local branch with a
+  planted shell-injection blocker and a divide-by-zero medium, `--from` its worktree, Codex
+  `gpt-6-sol` medium. Round 1 found both (52 s, 64k input); round 2 on the fix reviewed the delta
+  and ended `ready-for-pr` (66 s, 90k).
 - **Fixed with this entry:** `race` in the concurrency rule needs word boundaries (it matched
   "Traceback"); `seats/seats.json` is now a synced copy of the orchestrator's seat file, and
   `tests/test_seats.py` fails when the tier rules, a picked model or a pool drift from it.

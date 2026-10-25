@@ -369,6 +369,77 @@ class GatherTest(unittest.TestCase):
         self.assertIn("tier", ctx)
 
 
+class BranchModeTest(unittest.TestCase):
+    def setUp(self):
+        self.td = tempfile.TemporaryDirectory()
+        self.home = Path(self.td.name) / "home"
+        os.environ["PR_GATE_HOME"] = str(self.home)
+        self.calls = []
+        self.orig = pr_context.run
+        pr_context.run = self.fake_run
+
+    def tearDown(self):
+        pr_context.run = self.orig
+        os.environ.pop("PR_GATE_HOME", None)
+        self.td.cleanup()
+
+    def fake_run(self, args, cwd=None, check=True):
+        self.calls.append(args)
+        if args[:3] == ["gh", "pr", "view"]:
+            return (FIX / "pr_view.json").read_text()
+        if args[:3] == ["gh", "pr", "checks"]:
+            return "[]"
+        if args[:3] == ["gh", "pr", "diff"]:
+            return "diff --git a/x b/x\n+new"
+        if args[:1] != ["git"]:
+            return ""
+        rest = args[3:]
+        if rest[:1] == ["rev-parse"]:
+            return "c0ffee1234\n"
+        if rest[:1] == ["merge-base"]:
+            return "base999\n"
+        if rest[:2] == ["diff", "--name-only"]:
+            return "src/app.py\ndocs/a.md\n"
+        if rest[:2] == ["diff", "--numstat"]:
+            return "10\t2\tsrc/app.py\n-\t-\timg.png\n"
+        if rest[:1] == ["diff"]:
+            return "diff --git a/src/app.py b/src/app.py\n+key=ghp_" + "q" * 36 + "\n"
+        if rest[:1] == ["log"]:
+            return "Add export\nFix total\n"
+        if rest[:1] == ["rev-list"]:
+            return "2\n"
+        return ""
+
+    def test_branch_context_from_local_repo(self):
+        ctx = pr_context.gather_branch("o/r", "feat/x", Path(self.td.name) / "work", src="C:/src/repo")
+        self.assertEqual((ctx["mode"], ctx["pr"], ctx["branch"], ctx["ci"]), ("branch", "branch:feat/x", "feat/x", "none"))
+        self.assertEqual(ctx["head_sha"], "c0ffee1234")
+        self.assertEqual(ctx["files"], ["src/app.py", "docs/a.md"])
+        self.assertEqual(ctx["size"], {"files": 2, "additions": 10, "deletions": 2})
+        self.assertEqual(ctx["title"], "Add export")
+        self.assertEqual(ctx["behind_base"], 2)
+        self.assertNotIn("q" * 36, Path(ctx["diff_file"]).read_text(encoding="utf-8"))
+        self.assertIn(["git", "-C", ctx["checkout"], "fetch", "--quiet", "C:/src/repo", "refs/heads/feat/x"], self.calls)
+        self.assertFalse(any(a[:2] == ["gh", "pr"] for a in self.calls))
+        self.assertTrue(ctx["context_file"].endswith("o__r__b-feat_x.json"))
+
+    def test_bad_names_refused(self):
+        for name in ("../x", "-x", "", "a b"):
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                pr_context.gather_branch("o/r", name, Path(self.td.name) / "work")
+        with self.assertRaises(SystemExit):
+            pr_context.main(["o/r", "0"])
+
+    def test_pr_carries_over_branch_rounds(self):
+        findings = pr_context.findings
+        findings.record("o/r", "branch:feat/invoice-export", "aaa", "none", "fix", {},
+                        [{"severity": "high", "file": "x", "line": 1, "title": "t"}])
+        ctx = pr_context.gather("o/r", 5, Path(self.td.name) / "work")
+        self.assertEqual(ctx["last_reviewed_sha"], "aaa")
+        self.assertEqual([r["sha"] for r in ctx["branch_rounds"]], ["aaa"])
+        self.assertEqual(findings.load("o/r", 5)["rounds"], [])  # the PR's own cap starts at 0
+
+
 class TierTest(unittest.TestCase):
     def test_docs_and_tests_only(self):
         diff = ("+++ b/docs/a.md\n+doc line\n"
