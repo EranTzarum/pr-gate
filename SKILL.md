@@ -1,6 +1,6 @@
 ---
 name: pr-gate
-description: Use when the user asks to review, gate, babysit or drive a pull request (or all open PRs in a repo) to a merge decision without reading the code — "/pr-gate owner/repo 12", "review my PRs", "get PR 12 ready to merge". Waits for CI, runs a fresh-context read-only reviewer (codex, claude, cursor or a subagent), sends verified findings to the session that owns the branch, loops up to 3 rounds, then asks the user to reply "merge".
+description: Use when the user asks to review, gate, babysit or drive a pull request (or all open PRs in a repo) to a merge decision without reading the code — "/pr-gate owner/repo 12", "review my PRs", "get PR 12 ready to merge". Also before a PR exists: "review my branch", "check this before I open a PR" (branch mode, ends with "ready to open a PR"). Waits for CI, runs a fresh-context read-only reviewer (codex, claude, cursor or a subagent), sends verified findings to the session that owns the branch, loops up to 3 rounds, then asks the user to reply "merge".
 ---
 
 # pr-gate
