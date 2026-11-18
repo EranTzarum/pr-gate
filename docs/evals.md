@@ -279,3 +279,22 @@ repo, a CRM repo, one small repo), from `~/.pr-gate/usage.jsonl` and `~/.pr-gate
 - **Fixed with this entry:** `race` in the concurrency rule needs word boundaries (it matched
   "Traceback"); `seats/seats.json` is now a synced copy of the orchestrator's seat file, and
   `tests/test_seats.py` fails when the tier rules, a picked model or a pool drift from it.
+
+## 2026-11-18: one week of Codex quota, and where a review's input goes
+
+**The week.** The weekly Codex reading reached 93-94% on the last day before its reset. pr-gate made 91 of
+the 99 Codex runs logged that week (41 PRs across four repos; the factory made the other 8). The budget did
+what it was built to do: the cap rose in a straight line from 50% to 100% over the week, and use stayed just
+under that line. That line was the wrong shape: 70% was already allowed half way through the week.
+**Change:** the cap now holds at 70% and rises to 100% only in the last day of the week, or the last hour of
+the 5h window, when what is left would reset unused (`codex_<window>_pace` = `[hold, release]`).
+
+**Input per run.** The prompt pr-gate builds is small: 33-62K chars (~10-16K tokens). The runs logged
+270K-990K input tokens on average, up to 876K for one run, because an agent CLI sends the whole conversation
+again at every step. That 876K run, on a 97-file app PR, took 14 steps. In step 2 it read the repo's two
+planning docs (106K chars), which the digest in the prompt already covered. It also read one global skill
+file, and read three files two or three times each. Most reads were whole files.
+**Change:** the prompt now says to read little: find the lines with `rg -n`, read only that range, never
+read a file twice, read a whole file only when it is short, and do not open planning docs or skill files.
+Not done: hiding `~/.agents/skills` from codex (that needs HOME redirected; not tried).
+**To measure:** average input per Codex run over the next 3 real reviews, against 620K-990K before.

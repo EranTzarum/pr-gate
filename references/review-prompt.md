@@ -51,7 +51,15 @@ Skip style, naming, formatting and "consider refactoring".
 
 ## Rules for every finding
 
-- On Windows, read files with `Get-Content -Raw -Encoding utf8` (plain Get-Content garbles UTF-8). Read several files in one command when you can.
+- **Read little.** Everything you read is sent again with every later step, so
+  a whole file read early is paid for many times. Find the lines first
+  (`rg -n`), then read only the range you need, and never read the same file
+  twice. Read a whole file only when it is short (under ~300 lines). On
+  Windows, use `Get-Content -Raw -Encoding utf8` for that (plain Get-Content
+  garbles UTF-8) and `-Encoding utf8` for a range.
+- Do not open planning docs (ROADMAP, BACKLOG, CHANGELOG, TODO), other docs
+  beyond the repo rules above, or any skill file (`SKILL.md`, `~/.agents/skills`):
+  the review needs the code and the rules, nothing else.
 - Open the file and confirm the problem at that exact line in this checkout.
   If you cannot point to the line, drop it.
 - Give a concrete failure scenario: who does what, with what input, and what

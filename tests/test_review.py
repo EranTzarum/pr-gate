@@ -454,6 +454,8 @@ class ReviewCostTest(unittest.TestCase):
         self.assertIn("Keep UTF-8: café.", prompt)
         self.assertNotIn("- CLAUDE.md", prompt)
         self.assertIn("Get-Content -Raw -Encoding utf8", prompt)
+        self.assertIn("never read the same file\n  twice", prompt)  # reads are re-sent every step
+        self.assertIn("ROADMAP, BACKLOG", prompt)
         self.assertNotIn("Read these before judging anything", prompt)
         digest.unlink()
         self.assertIn("- CLAUDE.md", review.build_prompt(self.ctx))
