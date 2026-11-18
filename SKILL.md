@@ -149,8 +149,14 @@ The result JSON: `summary`, `kept` (verified findings, worst first), `dropped`
 `round`, `action`, and `usage` (per engine: `seconds`, token fields under
 `usage`, and for codex `rate_limits` with `5h` / `week` %). Exit 2/3 = no
 usable reviewer output (bad JSON, error, or timeout; codex/claude 15 min,
-cursor 25 min, then the process tree is killed): report it and offer
-another engine. Nothing is recorded, so it does not use up a round. Exit 3 with
+cursor 25 min, then the process tree is killed). Nothing is recorded, so it
+does not use up a round. **Switch engines yourself, do not stop or ask:** when
+`error` or `engine_output` shows a usage or rate limit, a login problem, or a
+timeout, re-run `review.py` at once with the next installed engine (codex ->
+claude -> cursor; never agy) and say in the report which engine failed, why,
+and which one reviewed instead. Codex, Claude, Cursor and the calling session
+each have their own quota: one running out never means pr-gate cannot run.
+Only if every engine fails, report it and stop. Exit 3 with
 `error` containing `round cap reached` → stop, tell the owner, and only
 re-run `review.py` with `--extra-round` after they OK it.
 
