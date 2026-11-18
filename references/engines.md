@@ -101,8 +101,8 @@ Exit 3 means it timed out and was killed; any other non-zero exit with an
   "effort": {"codex": "medium"},
   "risk_models": {"codex": "gpt-6.1-sol"},
   "budget": {
-    "codex_5h_pace": [50, 100],
-    "codex_week_pace": [50, 100],
+    "codex_5h_pace": [70, 100],
+    "codex_week_pace": [70, 100],
     "fallback": "cursor"
   }
 }

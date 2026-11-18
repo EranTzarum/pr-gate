@@ -24,7 +24,8 @@ counted in `usage.py`; agy Argon pool; Cursor critical = `grok-4.7-high` (xhigh 
 2026-10-25 (the user's yes): round 3 with green CI and only medium/low goes green; the mediums
 become per-repo follow-ups (`~/.pr-gate/followups/`) carried into every later review and closed
 via the reviewer's `resolved` list. Codex budget is paced by each window's reset clock
-(`codex_<window>_pace`, default 50 -> 100%); the user's config uses it.
+(`codex_<window>_pace`, default hold 70% until the last day / last hour, then 100%; changed
+2026-11-18 after a linear 50 -> 100 ramp let pr-gate reach 93% of the week by its last day).
 Branch mode (2026-10-25): `pr_context.py <repo> --branch <name> [--from <checkout>]`, state key
 `branch:<name>`, `ready-for-pr` instead of `ask-merge`, PR 0 refused, a PR's first round carries the
 branch rounds. Proven live on a throwaway local branch. Still to see on a real PR: a round-3

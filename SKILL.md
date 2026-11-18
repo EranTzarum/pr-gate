@@ -161,8 +161,10 @@ limits when absent). Totals across runs:
 `py -3 <skill>/scripts/usage.py --since today` (also `5h`, `week`, `all`).
 
 **Budget.** The Codex cap follows each window's reset clock: a review may start
-under 50% of a window that just began, rising to 100% at its reset
-(`codex_5h_pace` / `codex_week_pace` in config, default `[50, 100]`; a flat
+under 70% of a window for most of it, and under 100% in its last stretch (the
+last day of the week, the last hour of the 5h window), since what is left then
+would reset unused (`codex_5h_pace` / `codex_week_pace` in config, `[hold, release]`,
+default `[70, 100]`; a flat
 `codex_<window>_max_pct` is a ceiling on top). If the result has
 `budget_switch`, say which engine reviewed instead of codex and why (its
 `window`, the `cap` at that moment, the reading). Pass `--ignore-budget` only

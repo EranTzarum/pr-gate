@@ -132,19 +132,18 @@ def run_engine(engine, ctx, prompt, out, model=None, effort=None, timeout_s=None
     return meta
 
 
-WINDOW_S = {"5h": 5 * 3600, "week": 7 * 86400}
-DEFAULT_PACE = (50, 100)  # % allowed when a window starts -> % allowed at its reset
+RELEASE_S = {"5h": 3600, "week": 86400}  # how long before a reset the hold is lifted
+DEFAULT_PACE = (70, 100)  # % allowed for most of a window -> % allowed close to its reset
 
 
 def pace_cap(window, resets_at, now, budget):
-    """The % of a Codex window a review may start under. It grows with the time already
-    gone in the window, so early spending leaves room for the rest of it; a flat
-    codex_<window>_max_pct, when set, is a ceiling on top. No reset time known -> the start %."""
-    start, end = budget.get(f"codex_{window}_pace") or DEFAULT_PACE
-    gone = 0.0
-    if isinstance(resets_at, (int, float)) and not isinstance(resets_at, bool):
-        gone = min(1.0, max(0.0, 1 - (resets_at - now) / WINDOW_S[window]))
-    cap = start + (end - start) * gone
+    """The % of a Codex window a review may start under: the hold % for most of the window,
+    the release % in its last RELEASE_S (allowance left then would reset unused). A flat
+    codex_<window>_max_pct, when set, is a ceiling on top. No reset time known -> the hold %."""
+    hold, release = budget.get(f"codex_{window}_pace") or DEFAULT_PACE
+    near = (isinstance(resets_at, (int, float)) and not isinstance(resets_at, bool)
+            and resets_at - now <= RELEASE_S[window])
+    cap = release if near else hold
     flat = budget.get(f"codex_{window}_max_pct")
     return min(cap, flat) if isinstance(flat, (int, float)) else cap
 

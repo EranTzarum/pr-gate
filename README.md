@@ -119,10 +119,10 @@ Use the skill folder you cloned into in the test command. Use `cursor-agent`, no
 **4. Optional: save your preference** in `~/.pr-gate/config.json`, or just tell the agent *"review with Codex, and switch to Cursor before Codex runs out"* and it writes it:
 
 ```json
-{ "reviewer": "codex", "budget": { "codex_week_pace": [50, 100], "fallback": "cursor" } }
+{ "reviewer": "codex", "budget": { "codex_week_pace": [70, 100], "fallback": "cursor" } }
 ```
 
-The cap follows the reset clock: 50% while a week (or 5-hour window) is young, rising to 100% at its reset.
+The cap follows the reset clock: 70% for most of a week (or 5-hour window), 100% in its last day (or last hour), when what is left would reset unused.
 
 **5. Run it** in a session inside your repo:
 
