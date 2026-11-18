@@ -153,7 +153,7 @@ cursor 25 min, then the process tree is killed). Nothing is recorded, so it
 does not use up a round. **Switch engines yourself, do not stop or ask:** when
 `error` or `engine_output` shows a usage or rate limit, a login problem, or a
 timeout, re-run `review.py` at once with the next installed engine (codex ->
-claude -> cursor; never agy) and say in the report which engine failed, why,
+cursor -> claude; never agy, see above) and say in the report which engine failed, why,
 and which one reviewed instead. Codex, Claude, Cursor and the calling session
 each have their own quota: one running out never means pr-gate cannot run.
 Only if every engine fails, report it and stop. Exit 3 with
