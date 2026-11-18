@@ -295,11 +295,82 @@ def _format_line(engine, s):
     return "  ".join(parts)
 
 
+def week_pct_per_run(records):
+    """Codex week % one run adds, on average: the rise between consecutive readings of the
+    same week (same reset time), over the runs. Other tools' use in between counts too."""
+    runs = sorted((r for r in records if r.get("engine") == "codex" and r.get("rate_limits")),
+                  key=lambda r: str(r.get("ts")))
+    rise, prev = 0.0, None
+    for r in runs:
+        rl = r["rate_limits"]
+        if prev and prev.get("week_resets_at") == rl.get("week_resets_at")                 and isinstance(rl.get("week"), (int, float)) and isinstance(prev.get("week"), (int, float)):
+            rise += max(0.0, rl["week"] - prev["week"])
+        prev = rl
+    return round(rise / len(runs), 2) if len(runs) > 1 else None
+
+
+def compare(records, at, last=30):
+    """Per engine, the last `last` runs before `at` against every run since: did a change
+    (a prompt rule, a budget rule) cut what one review costs?"""
+    cut = _aware_utc(_parse_ts(at))
+    timed = [(r, _parse_ts(r.get("ts"))) for r in records]
+    before = [r for r, t in timed if t and _aware_utc(t) < cut]
+    after = [r for r, t in timed if t and _aware_utc(t) >= cut]
+    out = {}
+    for label, rows in (("before", before), ("after", after)):
+        for eng in {r.get("engine") or "?" for r in rows}:
+            mine = [r for r in rows if (r.get("engine") or "?") == eng]
+            mine = mine[-last:] if label == "before" else mine
+            s, n = summary(mine)[eng], len(mine)
+            out.setdefault(eng, {})[label] = {
+                "runs": n, "avg_input": round(s["input"] / n), "avg_uncached": round((s["input"] - s["cached"]) / n),
+                "avg_seconds": round(s["seconds"] / n), "week_pct_per_run": week_pct_per_run(mine)}
+    return out
+
+
+def measure_due():
+    """~/.pr-gate/measure.json = {"since": ISO, "what": "...", "runs": 3} marks a change to measure.
+    Once `runs` reviews ran after it, return the before/after once (the file is marked
+    reported), so the agent running pr-gate shows the result without anyone remembering."""
+    p = findings.home() / "measure.json"
+    try:
+        m = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(m, dict) or m.get("reported") or _parse_ts(m.get("since")) is None:
+        return None
+    res = compare(read(), m["since"])
+    if sum(e.get("after", {}).get("runs", 0) for e in res.values()) < int(m.get("runs", 3)):
+        return None
+    m["reported"] = _now_iso()
+    p.write_text(json.dumps(m, indent=2), encoding="utf-8")
+    return {"what": m.get("what"), "since": m["since"], "compare": res}
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--since", choices=("5h", "today", "week", "all"), default="today")
     ap.add_argument("--json", action="store_true", dest="as_json")
+    ap.add_argument("--compare", metavar="ISO_TIME", help="before/after a change, e.g. 2026-11-18T14:00Z")
+    ap.add_argument("--last", type=int, default=30, help="with --compare: runs before the change to average")
     args = ap.parse_args(argv)
+    if args.compare:
+        if _parse_ts(args.compare) is None:
+            ap.error("--compare needs an ISO time, e.g. 2026-11-18T14:00Z")
+        res = compare(read(), args.compare, args.last)
+        if args.as_json:
+            print(json.dumps(res, indent=2, sort_keys=True))
+            return 0
+        for eng in sorted(res):
+            for label in ("before", "after"):
+                c = res[eng].get(label)
+                if not c:
+                    print(f"{eng.ljust(7)} {label.ljust(6)}  no runs yet")
+                    continue
+                wk = "" if c["week_pct_per_run"] is None else f"  week +{c['week_pct_per_run']}%/run"
+                print(f"{eng.ljust(7)} {label.ljust(6)}  {c['runs']} runs  {_fmt_tokens(c['avg_input'])} in/run"
+                      f" ({_fmt_tokens(c['avg_uncached'])} uncached)  {_fmt_seconds(c['avg_seconds'])}/run{wk}")
+        return 0
     records = read(_since_seconds(args.since))
     if not records:
         print("no reviews logged yet")

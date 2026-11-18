@@ -342,6 +342,9 @@ def main(argv=None):
     out = json.loads(buf.getvalue())
     if rc == 2:  # no findings JSON: show what the engine said (a login error reads as nothing otherwise)
         extra["engine_output"] = raw.read_text(encoding="utf-8", errors="replace").strip()[:400]
+    measured = usage.measure_due()
+    if measured:
+        extra["measure"] = measured
     print(redact(json.dumps(dict(out, **extra), indent=2)))
     return rc
 

@@ -65,7 +65,7 @@ Cursor follows the same idea, with included models and no metered wallet ([engin
 ## What a review costs
 
 - **Every review logs** its tokens, seconds and, for Codex, how much of your 5-hour and weekly limits is used, to `~/.pr-gate/usage.jsonl`.
-- **See the totals** with `python3 scripts/usage.py --since today` (or `5h`, `week`, `all`).
+- **See the totals** with `python3 scripts/usage.py --since today` (or `5h`, `week`, `all`), and before/after a change with `--compare 2026-11-18T13:00Z`.
 - **Later rounds review only what changed** since the last reviewed commit, plus the earlier findings. The repo's docs go in once, capped.
 - **Measured on a real PR:** Codex input in a later round dropped from 1.03M to 395k tokens (−61%) ([evals](evals.md)).
 - **Shared readings:** each review is also appended to the machine-wide `~/.agent-usage/usage.jsonl`. Other tools on the same machine write their readings there too. The budget below uses the newest Codex reading from any of them.

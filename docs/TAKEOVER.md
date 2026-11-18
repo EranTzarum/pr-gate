@@ -66,6 +66,10 @@ follow-up being listed and closed by a later review, a paced `budget_switch`, an
 
 ## Open items, best first
 
+0. **Measuring (2026-11-18):** `~/.pr-gate/measure.json` marks the read-little prompt (`8f2cfd2`) and the
+   70% budget hold (`105e0a5`). After 3 reviews, `review.py` adds `measure` (before/after) to its result
+   once; the reporting agent shows it. Record the numbers in `docs/evals.md` (before: codex 786k in/run,
+   70k uncached, +1.0% of the week per run). By hand: `py -3 scripts/usage.py --compare 2026-11-18T13:12Z`.
 1. **Re-check tier threshold after 10 PRs** (`usage.py` totals and whether `strong` rounds missed
    blockers).
 2. **Single-tool paths not proven live:** Codex-only and Cursor-only. The first friend on one is the

@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+import findings  # noqa: E402
 import usage  # noqa: E402
 
 
@@ -162,6 +163,29 @@ class UsageTest(unittest.TestCase):
         data = json.loads(buf.getvalue())
         self.assertIn("codex", data)
         self.assertEqual(data["codex"]["runs"], 1)
+
+    def test_compare_before_and_after_a_change(self):
+        def run(ts, inp, week):
+            return {"ts": ts, "engine": "codex", "seconds": 60, "usage": {"input_tokens": inp, "cached_input_tokens": inp // 2},
+                    "rate_limits": {"week": week, "week_resets_at": 9}}
+        recs = [run("2026-11-01T00:00:00Z", 900, 10), run("2026-11-02T00:00:00Z", 700, 12),
+                run("2026-11-03T00:00:00Z", 800, 14), run("2026-11-04T00:00:00Z", 200, 14.5)]
+        res = usage.compare(recs, "2026-11-03T00:00Z", last=1)
+        self.assertEqual(res["codex"]["before"]["runs"], 1)          # only the last run before the change
+        self.assertEqual(res["codex"]["before"]["avg_input"], 700)
+        self.assertEqual(res["codex"]["after"], {"runs": 2, "avg_input": 500, "avg_uncached": 250,
+                                                 "avg_seconds": 60, "week_pct_per_run": 0.25})
+        self.assertIsNone(usage.week_pct_per_run(recs[:1]))
+
+    def test_measure_due_reports_once_after_enough_runs(self):
+        self.assertIsNone(usage.measure_due())  # no marker
+        (findings.home() / "measure.json").write_text(json.dumps({"since": "2026-01-01T00:00Z", "what": "x", "runs": 2}), encoding="utf-8")
+        usage.log({"engine": "codex", "usage": {"input_tokens": 10}})
+        self.assertIsNone(usage.measure_due())  # 1 of 2 runs
+        usage.log({"engine": "codex", "usage": {"input_tokens": 30}})
+        got = usage.measure_due()
+        self.assertEqual(got["compare"]["codex"]["after"]["avg_input"], 20)
+        self.assertIsNone(usage.measure_due())  # reported once
 
     def test_fmt_pct(self):
         self.assertEqual(usage._fmt_pct(1.0), "1%")

@@ -159,6 +159,10 @@ re-run `review.py` with `--extra-round` after they OK it.
 `cost: 312k in (281k cached), 4 min, Codex 5h 34% / week 61%` (omit cached or
 limits when absent). Totals across runs:
 `py -3 <skill>/scripts/usage.py --since today` (also `5h`, `week`, `all`).
+Before/after a change: `usage.py --compare <ISO time>` (average input, uncached input,
+time and Codex week % per run). If the result has `measure`, a change marked in
+`~/.pr-gate/measure.json` has enough runs after it: put its before/after lines in
+the report, one line per engine, and say whether the change cut the cost.
 
 **Budget.** The Codex cap follows each window's reset clock: a review may start
 under 70% of a window for most of it, and under 100% in its last stretch (the

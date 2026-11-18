@@ -298,3 +298,6 @@ file, and read three files two or three times each. Most reads were whole files.
 read a file twice, read a whole file only when it is short, and do not open planning docs or skill files.
 Not done: hiding `~/.agents/skills` from codex (that needs HOME redirected; not tried).
 **To measure:** average input per Codex run over the next 3 real reviews, against 620K-990K before.
+`usage.py --compare <time>` prints it; a marker file makes `review.py` report it by itself after 3 runs.
+Baseline (last 30 runs before the change): codex 786k in/run (70k uncached), 3 min, +1.0% of the week per
+run; claude 542k (84k); cursor 947k (95k), 9 min.
