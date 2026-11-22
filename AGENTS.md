@@ -43,6 +43,9 @@ py -3 -m unittest discover tests
 claude plugin validate mod && claude plugin test mod   # when mod/ changed
 ```
 
+`.githooks/pre-push` runs the unit tests and blocks a push that fails them. Enable it once per
+clone: `git config core.hooksPath .githooks`.
+
 ## Codex and Cursor
 
 On Codex and Cursor there is no app

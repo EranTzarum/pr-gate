@@ -1,0 +1,8 @@
+#!/bin/sh
+# Blocks a push when the unit gate fails (a broken test reached main on 2026-11-22).
+# Enable once per clone: git config core.hooksPath .githooks
+py=python3; command -v py >/dev/null 2>&1 && py="py -3"
+$py -m unittest discover tests -q >/dev/null 2>&1 || {
+  echo "pre-push: unit tests fail; run '$py -m unittest discover tests' and fix before pushing." >&2
+  exit 1
+}
