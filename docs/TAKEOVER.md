@@ -11,7 +11,7 @@ Read this first, then `AGENTS.md`, `SKILL.md`, and `docs/evals.md` (the evidence
 - **Tiers (2026-10-13/14):** weighted `tier` score in `pr_context`; `light`/`cheap`/`strong`/`critical`
   in `review.py` (`MODEL_TIERS`), one model step per tier with effort on every seat (codex
   luna/6-sol/6.1-sol, claude haiku/sonnet/opus); agy stays on Gemini until critical (scarce
-  Claude/GPT pool); agy is a lean_run engine but parked as a reviewer.
+  Claude/GPT pool); agy reviews again since 2026-11-22 (permissions on, `guard_checkout`).
 - **Shared usage file (2026-10-18):** every review appends to `~/.agent-usage/usage.jsonl`
   (contract in that folder's README, agreed with the factory); the Codex budget reads the newest
   reading from any tool.

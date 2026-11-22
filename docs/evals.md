@@ -301,3 +301,19 @@ Not done: hiding `~/.agents/skills` from codex (that needs HOME redirected; not 
 `usage.py --compare <time>` prints it; a marker file makes `review.py` report it by itself after 3 runs.
 Baseline (last 30 runs before the change): codex 786k in/run (70k uncached), 3 min, +1.0% of the week per
 run; claude 542k (84k); cursor 947k (95k), 9 min.
+
+## 2026-11-22: agy reviews again, with permissions on
+
+Parked since 2026-10-12: plan mode stopped at the first command, and permissions-on mode wrote a file
+**when asked to**. The user's point: plan mode is a planning mode, not a review mode; tell the reviewer it
+changes nothing, as with the other engines. Trial on a throwaway clone of this repo: `gemini-3.8-flash-medium`,
+permissions on, push URL disabled, a read-only review prompt for one script. It read the file, returned
+JSON with real findings (one confirmed by hand: a `read_text` without `errors="replace"`), and `git status`
+was clean afterwards. 574 s; 113k input, 323k cache read, 24k output.
+**Change:** agy is a reviewer and a budget fallback again. `review.py` disables push in the checkout and
+`guard_checkout` undoes and lists any write (`wrote_files`). Fallback order on a limit: codex, cursor,
+claude, agy.
+**A bug caught before release:** the first version of `guard_checkout` reset any folder it was given. A
+test ran an agy review whose checkout was this repo's own working tree, and `git reset --hard` wiped the
+uncommitted edits. It now resets only a folder `pr_context` built (`<repo>__checkout`) and only reports
+elsewhere; a test checks that a plain repo keeps its unsaved file.

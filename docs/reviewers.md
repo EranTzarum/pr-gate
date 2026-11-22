@@ -53,7 +53,7 @@ On 25 real PRs, every PR that turned out to have a high or blocker finding score
 - `gpt-6-terra`: refused on ChatGPT accounts.
 - Cursor `auto`: billed from a metered pool.
 
-Antigravity's `agy` runs through the launcher, but it is parked as a reviewer: it has no read-only mode that can still read files.
+Antigravity's `agy` reviews with permissions on (its plan mode cannot run commands); the prompt keeps it read-only, and pr-gate undoes and reports any file it changed.
 
 Its table already respects the two pools it bills:
 - Gemini, which is generous, up to `strong`.

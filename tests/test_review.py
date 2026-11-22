@@ -2,6 +2,7 @@ import io
 import json
 import os
 import sys
+import subprocess
 import tempfile
 import time
 import unittest
@@ -70,7 +71,7 @@ class EngineDefaultsTest(unittest.TestCase):
     def test_defaults_are_explicit_cheap_tier(self):
         seen = {}
 
-        def fake_run(engine, model, prompt, cwd, effort=None, timeout_s=None, meta=None):
+        def fake_run(engine, model, prompt, cwd, effort=None, timeout_s=None, meta=None, write=False):
             if meta is not None:
                 meta.update(seconds=1.5, engine=engine, model=model, effort=effort)
             seen[engine] = (model, effort)
@@ -92,19 +93,38 @@ class EngineDefaultsTest(unittest.TestCase):
         self.assertEqual(review.DEFAULT_MODELS["agy"], ("gemini-3.8-flash-medium", None))
         self.assertEqual(seen["codex"], ("gpt-6-luna", "medium"))  # override wins
 
-    def test_agy_is_parked_and_other_engines_keep_prompt(self):
+    def test_agy_reviews_with_permissions_and_every_engine_keeps_prompt(self):
         with tempfile.TemporaryDirectory(dir=WORKTREE) as d:
             _, ctx = make_ctx(d)
             prompt = review.build_prompt(ctx)
-            with patch.object(review.lean_run, "run", return_value=(0, "{}")) as run:
-                with self.assertRaisesRegex(RuntimeError, "not available as a reviewer"):
-                    review.run_engine("agy", ctx, prompt, Path(d) / "agy.out")
-                run.assert_not_called()
-                self.assertFalse(Path(d, "agy.out").exists())
-                for engine in ("codex", "claude", "cursor"):
+            with patch.object(review.lean_run, "run", return_value=(0, "{}")) as run,                     patch.object(review, "_git", return_value="") as git:
+                for engine in ("codex", "claude", "cursor", "agy"):
                     review.run_engine(engine, ctx, prompt, Path(d) / f"{engine}.out")
                     self.assertEqual(run.call_args.args[2], prompt)
                     self.assertIn("Get-Content -Raw -Encoding utf8", run.call_args.args[2])
+                    self.assertEqual(run.call_args.kwargs.get("write", False), engine == "agy")
+                pushes = [c.args[1:] for c in git.call_args_list if c.args[1:2] == ("remote",)]
+                self.assertEqual(pushes, [] if not ctx["checkout"].endswith("__checkout")
+                                 else [("remote", "set-url", "--push", "origin", "DISABLED")])
+
+    def test_guard_undoes_reviewer_writes(self):
+        with tempfile.TemporaryDirectory(dir=WORKTREE) as base:
+            d = str(Path(base, "o__r__checkout"))
+            subprocess.run(["git", "init", "-q", d], check=True)
+            Path(d, "a.txt").write_text("x", encoding="utf-8")
+            subprocess.run(["git", "-C", d, "add", "."], check=True)
+            subprocess.run(["git", "-C", d, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "i"], check=True)
+            self.assertEqual(review.guard_checkout(d), [])
+            Path(d, "a.txt").write_text("changed", encoding="utf-8")
+            Path(d, "new.txt").write_text("y", encoding="utf-8")
+            self.assertEqual(sorted(review.guard_checkout(d)), ["a.txt", "new.txt"])
+            self.assertEqual(Path(d, "a.txt").read_text(encoding="utf-8"), "x")
+            self.assertFalse(Path(d, "new.txt").exists())
+            other = Path(base, "my-repo")  # not a pr-gate checkout: report, never reset
+            subprocess.run(["git", "init", "-q", str(other)], check=True)
+            Path(other, "work.txt").write_text("unsaved", encoding="utf-8")
+            self.assertEqual(review.guard_checkout(str(other)), ["work.txt"])
+            self.assertTrue(Path(other, "work.txt").exists())
 
     def test_timeout_is_reported(self):
         orig = review.lean_run.run
@@ -146,7 +166,7 @@ class RiskTest(unittest.TestCase):
     def test_config_file_sets_default_engine(self):
         seen = {}
 
-        def fake_run(engine, model, prompt, cwd, effort=None, timeout_s=None, meta=None):
+        def fake_run(engine, model, prompt, cwd, effort=None, timeout_s=None, meta=None, write=False):
             if meta is not None:
                 meta.update(seconds=1.5, engine=engine, model=model, effort=effort)
             seen["call"] = (engine, model)
@@ -268,7 +288,7 @@ class TierTest(unittest.TestCase):
 
 class BothTest(unittest.TestCase):
     def run_main(self, d, outputs, extra_ctx=None):
-        def fake_run(engine, model, prompt, cwd, effort=None, timeout_s=None, meta=None):
+        def fake_run(engine, model, prompt, cwd, effort=None, timeout_s=None, meta=None, write=False):
             if meta is not None:
                 meta.update(seconds=1.5, engine=engine, model=model, effort=effort)
             return outputs[engine]
@@ -311,7 +331,7 @@ class BothTest(unittest.TestCase):
         self.assertIn("claude", out["partial"])
 
     def test_no_json_shows_engine_output(self):
-        def fake_run(engine, model, prompt, cwd, effort=None, timeout_s=None, meta=None):
+        def fake_run(engine, model, prompt, cwd, effort=None, timeout_s=None, meta=None, write=False):
             if meta is not None:
                 meta.update(seconds=1.5, engine=engine, model=model, effort=effort)
             return 1, "Error: Authentication required. Please run 'agent login' first."
@@ -377,7 +397,7 @@ class ReviewCostTest(unittest.TestCase):
         self.context_file, self.ctx = make_ctx(home.name, ci="pass")
         self.calls = []
 
-        def fake_run(engine, model, prompt, cwd, effort=None, timeout_s=None, meta=None):
+        def fake_run(engine, model, prompt, cwd, effort=None, timeout_s=None, meta=None, write=False):
             self.calls.append((engine, model, effort, timeout_s))
             meta.update(seconds=2.5, engine=engine, model=model, effort=effort,
                         usage={"input_tokens": 100})
@@ -487,34 +507,12 @@ class ReviewCostTest(unittest.TestCase):
         self.assertEqual(out["tier"]["level"], "cheap")
         self.assertNotIn("escalated", out)
 
-    def test_agy_engine_is_parked_before_prompt_or_run(self):
-        for args in (("--engine", "agy"), ("--engine", "agy", "--prompt-only")):
-            with self.subTest(args=args), patch.object(review, "build_prompt") as prompt:
-                rc, out = self.run_main(*args)
-                self.assertEqual(rc, 3)
-                self.assertEqual(out, {"error": review.PARKED_REASON, "engine": "agy"})
-                self.assertIn("not available as a reviewer", out["error"])
-                prompt.assert_not_called()
-                self.runner.assert_not_called()
-
-    def test_config_agy_reviewer_is_parked(self):
-        (self.home / "config.json").write_text('{"reviewer": "agy"}', encoding="utf-8")
-        rc, out = self.run_main()
-        self.assertEqual(rc, 3)
-        self.assertEqual(out, {"error": review.PARKED_REASON, "engine": "agy"})
-        self.runner.assert_not_called()
-
-    def test_agy_budget_fallback_is_parked(self):
+    def test_agy_budget_fallback_is_allowed(self):
         self.config_budget(fallback="agy")
-        self.seed_rounds(["old1", "old2"])
-        for engine in ("codex", "both"):
-            with self.subTest(engine=engine), patch.object(review.usage, "last_limits", return_value={"5h": 85}):
-                rc, out = self.run_main("--engine", engine)
-                self.assertEqual(rc, 3)
-                self.assertEqual(out["error"], review.PARKED_REASON)
-                self.assertEqual(out["tier"]["why"], ["last round before cap"])
-                self.assertNotIn("budget_switch", out)
-                self.runner.assert_not_called()
+        with patch.object(review.usage, "last_limits", return_value={"5h": 85}):
+            rc, out = self.run_main("--engine", "codex")
+        self.assertEqual(self.calls[-1][0], "agy")
+        self.assertEqual(out["budget_switch"]["to"], "agy")
 
     def test_blocked_model_never_launches_engine(self):
         rc, out = self.run_main("--engine", "codex", "--model", "gpt-6-astra")

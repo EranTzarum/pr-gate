@@ -53,10 +53,9 @@ CRITICAL_THRESHOLD = 10  # score; a blocker in the previous round is critical to
 DEFAULT_MODELS = {e: tiers["cheap"] for e, tiers in MODEL_TIERS.items()}
 RISK_MODELS = {e: tiers["strong"] for e, tiers in MODEL_TIERS.items()}
 ENGINES = ("codex", "claude", "cursor", "agy", "subagent", "both")
-REVIEW_ENGINES_PARKED = ("agy",)
-PARKED_REASON = ("agy is not available as a reviewer: it has no read-only mode that can still read files "
-                 "(plan mode stops at the first command; sandbox mode can write). "
-                 "Use codex, claude, cursor or subagent.")
+# agy's plan mode stops at the first command, so agy reviews with permissions on and the
+# prompt keeps it read-only; guard_checkout() checks and undoes any write (trial 2026-11-22).
+TRUSTED_ENGINES = ("agy",)
 BOTH = ("codex", "claude")
 
 
@@ -111,16 +110,21 @@ def build_prompt(ctx):
 def run_engine(engine, ctx, prompt, out, model=None, effort=None, timeout_s=None, meta=None):
     """Read-only lean run (scripts/lean_run.py): explicit model, no global MCPs,
     skills or hooks."""
-    if engine in REVIEW_ENGINES_PARKED:
-        raise RuntimeError(PARKED_REASON)
     model = model or DEFAULT_MODELS[engine][0]
     effort = effort or DEFAULT_MODELS[engine][1]
     timeout_s = timeout_s if timeout_s is not None else lean_run.ENGINE_TIMEOUT_S[engine]
     meta = {} if meta is None else meta
+    trusted = engine in TRUSTED_ENGINES
+    if trusted and Path(ctx["checkout"]).name.endswith("__checkout"):
+        _git(ctx["checkout"], "remote", "set-url", "--push", "origin", "DISABLED")
     try:
         code, stdout = lean_run.run(engine, model, prompt, Path(ctx["checkout"]), effort=effort,
-                                    timeout_s=timeout_s, meta=meta)
+                                    timeout_s=timeout_s, meta=meta, **({"write": True} if trusted else {}))
     finally:
+        if trusted:
+            wrote = guard_checkout(ctx["checkout"])
+            if wrote:
+                meta["wrote_files"] = wrote
         rounds = findings.load(ctx["repo"], ctx["pr"])["rounds"]
         usage.log(json.loads(redact(json.dumps(dict(meta, repo=ctx["repo"], pr=ctx["pr"],
                                                    sha=ctx["head_sha"], round=len(rounds) + 1)))))
@@ -130,6 +134,22 @@ def run_engine(engine, ctx, prompt, out, model=None, effort=None, timeout_s=None
     if code != 0 and not stdout.strip():
         raise RuntimeError(f"{engine} ({model}) exited {code} with no output")
     return meta
+
+
+def _git(cwd, *args):
+    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, encoding="utf-8",
+                          errors="replace").stdout
+
+
+def guard_checkout(checkout):
+    """Files a permissions-on reviewer changed in pr-gate's own throwaway checkout, undone.
+    Resets and cleans only a folder pr_context built (`<repo>__checkout`); anywhere else it
+    only reports, so a real working repo never loses uncommitted work."""
+    changed = [line[3:] for line in _git(checkout, "status", "--porcelain").splitlines() if line.strip()]
+    if changed and Path(checkout).name.endswith("__checkout"):
+        _git(checkout, "reset", "--hard", "-q")
+        _git(checkout, "clean", "-fdq")
+    return changed
 
 
 RELEASE_S = {"5h": 3600, "week": 86400}  # how long before a reset the hold is lifted
@@ -162,10 +182,8 @@ def budget_engine(engine, cfg, ignore_budget, extra):
         cap = pace_cap(window, resets, now, budget)
         if val is not None and val >= cap:
             fallback = budget.get("fallback", "cursor")
-            if fallback in REVIEW_ENGINES_PARKED:
-                raise RuntimeError(PARKED_REASON)
-            if fallback not in ("claude", "cursor"):
-                raise RuntimeError("budget fallback must be claude or cursor")
+            if fallback not in ("claude", "cursor", "agy"):
+                raise RuntimeError("budget fallback must be cursor, claude or agy")
             extra["budget_switch"] = {"from": "codex", "to": fallback, "window": window, "cap": round(cap),
                                       "5h": limits.get("5h"), "week": limits.get("week")}
             return fallback
@@ -292,9 +310,6 @@ def main(argv=None):
     a.engine = a.engine or (None if a.raw else cfg.get("reviewer"))
     if a.engine and a.engine not in ENGINES:
         ap.error(f"config reviewer {a.engine!r} is not one of {', '.join(ENGINES)}")
-    if a.engine in REVIEW_ENGINES_PARKED:
-        print(json.dumps({"error": PARKED_REASON, "engine": a.engine}))
-        return 3
     level, why = tier_level(ctx, cfg, rounds)
     if a.tier:
         level, why = a.tier, [f"--tier {a.tier}"]

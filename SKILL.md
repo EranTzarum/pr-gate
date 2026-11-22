@@ -93,10 +93,10 @@ don't silently switch. `subagent` = an Agent-tool subagent in this session
 and carries the Cursor account's plugins and MCP tools. On a Cursor-only setup
 it is the default; say once what it carries (plugins/MCP).
 
-Antigravity (`agy`) is **parked as reviewer**: plan mode stops at the first shell
-command, while sandbox mode can write, so it has no read-only mode that can still
-read files with commands. `lean_run.py agy` still works for other read-only uses
-that do not need to read files with commands; do not pick it as a reviewer or budget fallback.
+Antigravity (`agy`) reviews with permissions on: its plan mode stops at the first
+command, so the prompt keeps it read-only instead. `review.py` disables `git push` in
+the throwaway checkout and, after the run, undoes any file it changed and lists them
+as `wrote_files` in `usage` (say so in the report). Slow: about 10 min a review.
 
 ## The loop (one PR)
 
@@ -153,8 +153,8 @@ cursor 25 min, then the process tree is killed). Nothing is recorded, so it
 does not use up a round. **Switch engines yourself, do not stop or ask:** when
 `error` or `engine_output` shows a usage or rate limit, a login problem, or a
 timeout, re-run `review.py` at once with the next installed engine (codex ->
-cursor -> claude; never agy, see above) and say in the report which engine failed, why,
-and which one reviewed instead. Codex, Claude, Cursor and the calling session
+cursor -> claude -> agy) and say in the report which engine failed, why,
+and which one reviewed instead. Codex, Cursor, Claude, agy and the calling session
 each have their own quota: one running out never means pr-gate cannot run.
 Only if every engine fails, report it and stop. Exit 3 with
 `error` containing `round cap reached` → stop, tell the owner, and only

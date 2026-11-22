@@ -15,7 +15,7 @@ Python is `py -3` on Windows and `python3` elsewhere. `<skill>` is this folder.
 | `codex` | `codex --version` | `codex login status` | `codex login` |
 | `claude` | `claude --version` | `claude auth status` | `claude auth login` |
 | `cursor` | `cursor-agent --version` | `cursor-agent status` | `cursor-agent login` |
-| `agy` (parked as reviewer) | `agy --help` | (same binary; no separate status) | install per Antigravity docs |
+| `agy` | `agy --help` | (same binary; no separate status) | install per Antigravity docs |
 | `subagent` | you are Claude Code with the Agent tool | n/a | n/a |
 
 Use `cursor-agent`, never the bare `agent`: other CLIs (Grok Build) install their own `agent`
@@ -34,7 +34,7 @@ On PowerShell, write the prompt to a file and use `Get-Content prompt.txt | py -
 
 For `agy`, `lean_run` turns the prompt into one NDJSON line on stdin (`stream-json`); you still
 invoke it the same way. Read-only runs use `--mode plan` (not `--dangerously-skip-permissions`).
-The agy test above is for other uses; agy is parked as reviewer (see below).
+As a reviewer, agy runs with permissions on (see below).
 
 Typical times: codex 20-40 s, claude about 7 s, cursor about 160 s fixed startup per run
 (measured 2026-10-12), agy about 48 s on a one-line "ok" test (~35k tokens fixed).
@@ -54,7 +54,7 @@ Exit 3 means it timed out and was killed; any other non-zero exit with an
 | codex | `gpt-6-luna`, effort `medium` | `gpt-6-sol`, effort `medium` | `gpt-6.1-sol`, effort `medium` | `gpt-6.1-sol`, effort `high` |
 | claude | `haiku`, effort `medium` | `sonnet`, effort `medium` | `opus`, effort `medium` | `opus`, effort `high` |
 | cursor | `composer-2.5` | `composer-2.5` | `grok-4.7-high` | `grok-4.7-high` |
-| agy (parked as reviewer) | `gemini-3.8-flash-medium` | `gemini-3.8-flash-medium` | `gemini-3.8-flash-high` | `claude-sonnet-5-5-medium` |
+| agy | `gemini-3.8-flash-medium` | `gemini-3.8-flash-medium` | `gemini-3.8-flash-high` | `claude-sonnet-5-5-medium` |
 
 - Each engine climbs one model per tier: small, then mid, then top. Effort is part of every seat:
   a flag for codex and claude, and part of the model name for cursor and agy.
@@ -127,10 +127,10 @@ model's list price from the metered "Other Models" pool; pick `composer-2.5` or 
 `grok-4.7-*` slug from `cursor-agent models`. With `--output-format json`, the CLI prints
 JSON only at the end, so an empty output file while the run is in progress is normal.
 
-**Antigravity (`agy`) is parked as reviewer:** plan mode stops at the first shell command,
-while sandbox mode can write, so it has no read-only mode that can still read files with commands.
-`lean_run.py agy` still works for other read-only uses that do not need to read files with
-commands; `review.py` rejects it as a reviewer or budget fallback.
+**Antigravity (`agy`) as reviewer:** reviews with permissions on: its plan mode stops at the first
+command, so the prompt keeps it read-only instead. `review.py` disables `git push` in
+the throwaway checkout and, after the run, undoes any file it changed and lists them
+as `wrote_files` in `usage` (say so in the report). Slow: about 10 min a review.
 
 ## 4. What lean_run actually runs
 
@@ -141,7 +141,7 @@ You never type these yourself; they are here so you can debug a failing engine.
 | codex | `codex exec -m <model> --ignore-user-config --sandbox read-only -C <checkout> --json --skip-git-repo-check` with a login-only `CODEX_HOME`; on Windows also `-c windows.sandbox=unelevated` |
 | claude | `claude -p --model <model> --output-format json --setting-sources project,local --strict-mcp-config --permission-mode plan --disable-slash-commands` |
 | cursor | `cursor-agent -p --model <model> --trust --output-format json --workspace <checkout> --mode ask` |
-| agy (parked as reviewer) | `agy --model <model> --mode plan --add-dir <checkout> --disable-slash-commands --print= --input-format stream-json --output-format stream-json` (prompt as one NDJSON line on stdin; other uses only) |
+| agy | review: `agy --model <model> --dangerously-skip-permissions` (other read-only uses: `--mode plan`) --add-dir <checkout> --disable-slash-commands --print= --input-format stream-json --output-format stream-json` (prompt as one NDJSON line on stdin; other uses only) |
 
 Prompt and output go through files, never pipes (cursor hangs on pipes). Per-engine timeouts
 (codex and claude 15 minutes, cursor 25 minutes, agy 20 minutes) kill the whole process tree.

@@ -20,7 +20,7 @@ The loop is in `SKILL.md`; the reviewer prompt is `references/review-prompt.md`.
 ## Rules
 
 - Stdlib only. Tests use `unittest` and mock `pr_context.run`; no network in tests.
-- Engines stay read-only unless `--write`: no `--force`, `--yolo`, `acceptEdits` or sandbox bypass in a default `lean_run.build` (a test enforces it).
+- Engines stay read-only unless `--write`: no `--force`, `--yolo`, `acceptEdits` or sandbox bypass in a default `lean_run.build` (a test enforces it). The one exception is `review.py` running agy as a reviewer: permissions on, push disabled in the throwaway checkout, `guard_checkout` undoes and reports writes.
 - Never fall back to a CLI's default model, and never load the full profile silently: a missing login is an error.
 - Nothing in this repo merges, pushes, edits repo settings or creates schedules.
 - New secret patterns go into `redact.py` with a test.
