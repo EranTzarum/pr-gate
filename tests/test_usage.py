@@ -77,6 +77,10 @@ class UsageTest(unittest.TestCase):
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text('{"engine":"codex"}\nnot json\n{"engine":"claude"}\n', encoding="utf-8")
         self.assertEqual(len(usage.read()), 2)
+        p.write_bytes(b'{"engine":"codex"}
+ÿþ broken
+')  # a corrupt byte must not crash the ledger
+        self.assertEqual(len(usage.read()), 1)
 
     def test_read_since_seconds(self):
         old = (datetime.now(timezone.utc) - timedelta(hours=2)).replace(microsecond=0)

@@ -143,7 +143,7 @@ def read(since_seconds=None):
     if since_seconds is not None:
         cutoff = datetime.now(timezone.utc) - timedelta(seconds=since_seconds)
     out = []
-    for line in p.read_text(encoding="utf-8").splitlines():
+    for line in p.read_text(encoding="utf-8", errors="replace").splitlines():
         if not line.strip():
             continue
         try:
